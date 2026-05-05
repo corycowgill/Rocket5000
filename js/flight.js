@@ -14,13 +14,14 @@
   'use strict';
 
   // ---- constants ------------------------------------------------------------
-  const THRUST_GAIN = 12;
+  const THRUST_GAIN = 14;
   const GRAVITY = 9.8;
   const FUEL_MASS_PER_L = 0.05;
   const M_TO_FT = 3.281;
   const MOON_ALTITUDE_FT = 1_000_000;
   const MOON_ALTITUDE_M = MOON_ALTITUDE_FT / M_TO_FT;
-  const PIXEL_PER_M = 2;             // base zoom
+  const PIXEL_PER_M_BASE = 2.4;      // base zoom (will scale with speed)
+  const PIXEL_PER_M_MIN  = 1.2;      // minimum zoom at high speed
   const STACK_SCALE = 1.5;           // sprite scale during flight
 
   // ---- module state ---------------------------------------------------------
@@ -416,9 +417,24 @@
 
     s.time += dt;
 
-    // controls
+    // controls — snappier ramp + ignition kick on first hard punch in
     const throttleTarget = (F.keys.thrust || F.touch.thrust) ? 1 : 0;
-    s.throttle += (throttleTarget - s.throttle) * Math.min(1, dt * 8);
+    const prev = s.throttle;
+    s.throttle += (throttleTarget - s.throttle) * Math.min(1, dt * 18);
+    if (prev < 0.2 && s.throttle >= 0.2 && s.fuel > 0) {
+      // kick: gives a satisfying "punch" off the pad
+      const ax = -Math.sin(s.angle), ay = -Math.cos(s.angle);
+      s.vy += -ay * 4;
+      s.vx += -ax * 4;
+      s.shake = Math.max(s.shake || 0, 0.35);
+      flashMsg('IGNITION');
+    }
+    // continuous engine rumble while burning
+    if (s.throttle > 0.15 && s.fuel > 0) {
+      s.rumble = Math.min(0.18, (s.rumble || 0) + dt * 0.5);
+    } else {
+      s.rumble = Math.max(0, (s.rumble || 0) - dt * 0.8);
+    }
 
     const steerL = F.keys.left || F.touch.left;
     const steerR = F.keys.right || F.touch.right;
@@ -606,19 +622,36 @@
     });
     F.particles = F.particles.filter(p => p.life > 0);
 
-    // exhaust particles (fire opposite the thrust direction so they trail behind tilted rockets)
+    // exhaust particles — layered: hot core sparks + outer glow + smoke trail
     if (s.throttle > 0.1 && s.fuel > 0 && burningEngines > 0) {
       const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
-      for (let i = 0; i < 2; i++) {
-        const colorPart = Parts.byId(s.engines.find(e => e.alive)?.pid);
+      const colorPart = Parts.byId(s.engines.find(e => e.alive)?.pid);
+      const flame = colorPart?.flameColor || '#ffcc33';
+      // hot sparks
+      for (let i = 0; i < 3; i++) {
         F.particles.push({
-          x: s.x + ex * 0.6 + (Math.random() - 0.5) * 0.3,
-          y: s.y + ey * 0.6 + (Math.random() - 0.5) * 0.3,
-          vx: ex * (8 + Math.random() * 4) + s.vx * 0.3 + (Math.random() - 0.5) * 2,
-          vy: ey * (8 + Math.random() * 4) + s.vy * 0.3 + (Math.random() - 0.5) * 2,
-          life: 0.4 + Math.random() * 0.2,
-          color: colorPart?.flameColor || '#ffcc33',
+          x: s.x + ex * 0.6 + (Math.random() - 0.5) * 0.4,
+          y: s.y + ey * 0.6 + (Math.random() - 0.5) * 0.4,
+          vx: ex * (10 + Math.random() * 6) + s.vx * 0.3 + (Math.random() - 0.5) * 2,
+          vy: ey * (10 + Math.random() * 6) + s.vy * 0.3 + (Math.random() - 0.5) * 2,
+          life: 0.3 + Math.random() * 0.2,
+          color: i === 0 ? '#ffffff' : flame,
           size: 2 + Math.random() * 2,
+        });
+      }
+      // smoke trail (low altitude only — vacuum has no smoke)
+      const altKm = s.y / 1000;
+      const smokeAir = Math.max(0, 1 - altKm / 30);
+      if (smokeAir > 0 && Math.random() < 0.7) {
+        F.particles.push({
+          x: s.x + ex * 1.2 + (Math.random() - 0.5) * 0.5,
+          y: s.y + ey * 1.2 + (Math.random() - 0.5) * 0.5,
+          vx: ex * 2 + (Math.random() - 0.5) * 1,
+          vy: ey * 2 + (Math.random() - 0.5) * 1,
+          life: 1.2 + Math.random() * 0.8,
+          color: '#888888',
+          size: 4 + Math.random() * 4,
+          smoke: true,
         });
       }
     }
@@ -803,12 +836,13 @@
     const s = F.sim;
     const altFt = s.y * M_TO_FT;
 
-    // screen shake — translate the canvas a few pixels
+    // screen shake (impacts) + rumble (continuous while burning)
     let shakeX = 0, shakeY = 0;
-    if (s.shake > 0) {
-      const amp = s.shake * 8;
-      shakeX = (Math.random() - 0.5) * amp;
-      shakeY = (Math.random() - 0.5) * amp;
+    const rumble = s.rumble || 0;
+    const shakeAmp = (s.shake > 0 ? s.shake * 8 : 0) + rumble * 6;
+    if (shakeAmp > 0) {
+      shakeX = (Math.random() - 0.5) * shakeAmp;
+      shakeY = (Math.random() - 0.5) * shakeAmp;
     }
     ctx.save();
     ctx.translate(shakeX, shakeY);
@@ -833,12 +867,19 @@
     // ground horizon (visible while low)
     if (altFt < 30000) drawHorizon(ctx, W, H, altFt, s.x);
 
-    // world-space helpers
+    // world-space helpers — zoom out as we accelerate so motion reads
+    const speed = Math.abs(s.vy);
+    const zoomT = Math.min(1, speed / 220);
+    const ppm = PIXEL_PER_M_BASE - (PIXEL_PER_M_BASE - PIXEL_PER_M_MIN) * zoomT;
+    s.lastPpm = ppm;
     const worldToScreen = (wx, wy) => {
-      const sx = W / 2 + (wx - s.x) * PIXEL_PER_M;
-      const sy = H * 0.65 - (wy - s.y) * PIXEL_PER_M;
+      const sx = W / 2 + (wx - s.x) * ppm;
+      const sy = H * 0.65 - (wy - s.y) * ppm;
       return [sx, sy];
     };
+
+    // speed streaks — overlay above sky, below world objects
+    drawSpeedStreaks(ctx, W, H, s);
 
     // apex ghost line — your previous best altitude as a horizontal target line
     drawApexGhost(ctx, W, H, s, worldToScreen);
@@ -849,12 +890,22 @@
       drawHazard(ctx, h, hx, hy);
     });
 
-    // particles
+    // particles — smoke billows + fades; sparks shrink as life ends
     F.particles.forEach(p => {
       const [px, py] = worldToScreen(p.x, p.y);
-      ctx.fillStyle = p.color;
-      const sz = Math.max(1, p.size * (p.life > 0.3 ? 1 : p.life * 3));
-      ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+      if (p.smoke) {
+        // expand + fade smoke
+        const lifePct = Math.max(0, p.life / 1.6);
+        const sz = p.size * (1 + (1 - lifePct) * 1.5);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = lifePct * 0.6;
+        ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+        ctx.globalAlpha = 1;
+      } else {
+        const sz = Math.max(1, p.size * (p.life > 0.3 ? 1 : p.life * 3));
+        ctx.fillStyle = p.color;
+        ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+      }
     });
 
     // rocket
@@ -882,6 +933,23 @@
       ctx.globalAlpha = a;
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawSpeedStreaks(ctx, W, H, s) {
+    const speed = Math.abs(s.vy);
+    const t = Math.max(0, Math.min(1, (speed - 35) / 200));
+    if (t <= 0) return;
+    const count = Math.floor(8 + t * 32);
+    const rng = (n) => ((Math.sin(n * 91.7 + s.time * 0.4) + 1) * 0.5);
+    ctx.fillStyle = 'rgba(255, 255, 255, ' + (0.05 + t * 0.18) + ')';
+    for (let i = 0; i < count; i++) {
+      const x = (rng(i) * W);
+      // streak length grows with speed; phase scrolls so they appear to fly past
+      const phase = (s.time * (60 + speed * 0.6) + i * 53) % H;
+      const yScreen = (phase) % H;
+      const len = 6 + t * 24;
+      ctx.fillRect(x, yScreen, 1, len);
     }
   }
 
@@ -951,7 +1019,8 @@
 
   function drawHorizon(ctx, W, H, altFt, x) {
     // earth curvature: ground recedes as altitude grows
-    const groundY = H * 0.65 + altFt * 0.04 * PIXEL_PER_M;
+    const ppm = F.sim.lastPpm || PIXEL_PER_M_BASE;
+    const groundY = H * 0.65 + altFt * 0.04 * ppm;
     if (groundY < H + 50) {
       ctx.fillStyle = '#3a2614';
       ctx.fillRect(0, groundY, W, H - groundY);
@@ -1123,7 +1192,8 @@
       const tickFt = baseTick + k * tickEvery;
       if (tickFt < 0) continue;
       const tickM = tickFt / M_TO_FT;
-      const sy = H * 0.65 - (tickM - yM) * PIXEL_PER_M;
+      const ppm = F.sim.lastPpm || PIXEL_PER_M_BASE;
+      const sy = H * 0.65 - (tickM - yM) * ppm;
       if (sy < 0 || sy > H) continue;
       ctx.fillRect(W - 30, sy, 6, 1);
       ctx.fillText(formatFt(tickFt), W - 36, sy + 4);
