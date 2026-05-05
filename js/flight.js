@@ -37,6 +37,8 @@
     stars: [],
     particles: [],
     hazards: [],
+    droppedTanks: [], // tumbling jettisoned parts (proper sprites)
+    satellites: [],   // drifting decoration in space
     msg: '',
     msgT: 0,
     seed: 0,
@@ -77,6 +79,8 @@
     initStars();
     F.particles = [];
     F.hazards = [];
+    F.droppedTanks = [];
+    F.satellites = [];
     F.msg = 'IGNITION';
     F.msgT = 1.5;
 
@@ -339,21 +343,41 @@
   }
 
   function spawnStageDebris(s, indices) {
-    // launch a few chunky debris pieces downward in rocket-frame
+    // proper tumbling sprites for each dropped part — much more dramatic
+    // than a particle burst because you can see the actual hardware fall away
     const ax = -Math.sin(s.angle);
     const ay = -Math.cos(s.angle);
-    for (let k = 0; k < 8; k++) {
-      const spread = (Math.random() - 0.5) * 4;
-      F.particles.push({
-        x: s.x + ax * 1.5 + spread * 0.3,
-        y: s.y + ay * 1.5 - 0.5,
-        vx: ax * (4 + Math.random() * 4) + (Math.random() - 0.5) * 6 + s.vx * 0.5,
-        vy: ay * (6 + Math.random() * 4) + (Math.random() - 0.5) * 4 + s.vy * 0.5,
-        life: 1.2 + Math.random() * 0.8,
-        color: ['#aaaaaa', '#888888', '#cc4444', '#ffcc33'][k % 4],
-        size: 3 + Math.random() * 3,
+    // we'll spread the dropped parts along the rocket's belly
+    indices.forEach((idx, k) => {
+      const partId = F.rocket.parts[idx];
+      const part = Parts.byId(partId);
+      if (!part) return;
+      const offset = (k - indices.length / 2) * 0.4;
+      F.droppedTanks.push({
+        partId,
+        x: s.x + ax * (1.5 + k * 0.3) + offset * Math.cos(s.angle),
+        y: s.y + ay * (1.5 + k * 0.3) + offset * Math.sin(s.angle),
+        vx: ax * (3 + Math.random() * 3) + (Math.random() - 0.5) * 4 + s.vx * 0.6,
+        vy: ay * (5 + Math.random() * 3) + (Math.random() - 0.5) * 3 + s.vy * 0.6,
+        angle: s.angle + (Math.random() - 0.5) * 0.4,
+        angVel: (Math.random() - 0.5) * 6,
+        life: 4.0,
+        // engines that were still alive and burning go out spectacularly
+        onFire: part.category === 'engine' && s.fuel > 0 && s.throttle > 0.2,
       });
-    }
+      // companion smoke + sparks for the bolt-blow-off effect
+      for (let j = 0; j < 4; j++) {
+        F.particles.push({
+          x: s.x + ax * 1.0,
+          y: s.y + ay * 1.0,
+          vx: (Math.random() - 0.5) * 8 + s.vx * 0.3,
+          vy: (Math.random() - 0.5) * 8 + s.vy * 0.3,
+          life: 0.4 + Math.random() * 0.3,
+          color: '#ffeeaa',
+          size: 2 + Math.random() * 2,
+        });
+      }
+    });
   }
 
   function canStage() {
@@ -649,6 +673,30 @@
     });
     F.particles = F.particles.filter(p => p.life > 0);
 
+    // dropped fuel tanks tumble & fall
+    F.droppedTanks.forEach(d => {
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vy -= GRAVITY * dt;
+      d.angle += d.angVel * dt;
+      d.life -= dt;
+      // sputter trail if it was burning when dropped
+      if (d.onFire && d.life > 1.5 && Math.random() < 0.3) {
+        F.particles.push({
+          x: d.x, y: d.y,
+          vx: (Math.random() - 0.5) * 4 + d.vx * 0.3,
+          vy: (Math.random() - 0.5) * 4 + d.vy * 0.3,
+          life: 0.5,
+          color: '#ff7733',
+          size: 3,
+        });
+      }
+    });
+    F.droppedTanks = F.droppedTanks.filter(d => d.life > 0 && (d.y - F.sim.y) > -80);
+
+    // satellites drift across at high altitude
+    updateSatellites(dt, F.sim);
+
     // exhaust particles — layered: hot core sparks + outer glow + smoke trail
     if (s.throttle > 0.1 && s.fuel > 0 && burningEngines > 0) {
       const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
@@ -787,6 +835,20 @@
           if (h.type === 'lightning') s.hull -= 25;
           if (h.type === 'debris') s.hull -= 30;
           spawnExplosion(s.x, s.y, 0.6);
+          // directional sparks ricocheting off the rocket where the hazard hit
+          const ang = Math.atan2(dy, dx) + Math.PI; // away from hazard
+          for (let k = 0; k < 14; k++) {
+            const a = ang + (Math.random() - 0.5) * 1.6;
+            const sp = 6 + Math.random() * 10;
+            F.particles.push({
+              x: s.x, y: s.y,
+              vx: Math.cos(a) * sp + s.vx * 0.4,
+              vy: Math.sin(a) * sp + s.vy * 0.4,
+              life: 0.35 + Math.random() * 0.3,
+              color: k % 3 === 0 ? '#ffffff' : '#ffcc44',
+              size: 2 + Math.random() * 2,
+            });
+          }
           h.dead = true;
           h.hit = true;
           // any hit resets combo
@@ -957,6 +1019,12 @@
     // ground horizon (visible while low)
     if (altFt < 30000) drawHorizon(ctx, W, H, altFt, s.x);
 
+    // mountains stacked in front of horizon
+    if (altFt < 5500) drawMountains(ctx, W, H, altFt, s.x);
+
+    // wind streaks blow across the atmosphere
+    drawWindStreaks(ctx, W, H, altFt, s.modifier, s.time);
+
     // speed streaks — overlay above sky, below world objects
     drawSpeedStreaks(ctx, W, H, s);
 
@@ -987,9 +1055,21 @@
       }
     });
 
+    // satellites drifting through space (behind hazards & rocket)
+    drawSatellites(ctx, W, H, worldToScreen);
+
+    // dropped fuel-tank sprites tumbling away
+    F.droppedTanks.forEach(d => drawDroppedTank(ctx, d, worldToScreen));
+
     // engine glow halo — additive blend, sits behind rocket but in front
     // of exhaust particles so the trail glows along its core
     drawEngineGlow(ctx, s, worldToScreen);
+
+    // re-entry plasma envelope: when falling fast through atmosphere
+    drawPlasma(ctx, s, worldToScreen);
+
+    // heat shimmer below the bell at high throttle (in atmosphere)
+    drawHeatShimmer(ctx, s, worldToScreen);
 
     // rocket
     const [rx, ry] = worldToScreen(s.x, s.y);
@@ -1483,6 +1563,237 @@
     ctx.fillRect(0, H - 6, W, 6);
     ctx.fillRect(0, 0, 6, H);
     ctx.fillRect(W - 6, 0, 6, H);
+  }
+
+  // ---- Re-entry plasma envelope ---------------------------------------------
+  function drawPlasma(ctx, sim, worldToScreen) {
+    const speed = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy);
+    const altKm = sim.y / 1000;
+    const air = Math.max(0, 1 - altKm / 80);
+    // need real speed AND atmosphere (not just falling in vacuum)
+    const intensity = Math.max(0, (speed - 70) / 140) * air;
+    if (intensity <= 0.05) return;
+    const [cx, cy] = worldToScreen(sim.x, sim.y);
+    // direction of motion in screen-space (plasma forms on the leading face)
+    const speedY = (sim.vy >= 0 ? -1 : 1); // plasma in front of motion
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 5; i >= 0; i--) {
+      const r = (10 + i * 9) * (0.5 + intensity);
+      const a = (0.30 - i * 0.045) * intensity;
+      ctx.fillStyle = 'rgba(255,' + (110 - i * 14) + ',' + (40 + i * 8) + ',' + a + ')';
+      // skew the envelope toward the leading face by speedY
+      ctx.fillRect(cx - r, cy - r + speedY * 4, r * 2, r * 2);
+    }
+    // hot leading edge highlight
+    ctx.fillStyle = 'rgba(255, 240, 180,' + (0.5 * intensity) + ')';
+    ctx.fillRect(cx - 14, cy + speedY * 14, 28, 4);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- Heat shimmer below engine bell ---------------------------------------
+  function drawHeatShimmer(ctx, sim, worldToScreen) {
+    if (sim.throttle < 0.3 || sim.fuel <= 0) return;
+    const altKm = sim.y / 1000;
+    const air = Math.max(0, 1 - altKm / 50);
+    if (air <= 0.1) return;
+    const ex = -Math.sin(sim.angle), ey = -Math.cos(sim.angle);
+    // start a few meters past the engine
+    ctx.fillStyle = 'rgba(255, 230, 180,' + (0.10 * air * sim.throttle) + ')';
+    for (let i = 0; i < 8; i++) {
+      const along = 1.5 + i * 0.6;
+      const wob = Math.sin(sim.time * 12 + i * 0.7) * 3;
+      const ortho = Math.cos(sim.angle); // simple lateral wobble vector
+      const wx = sim.x + ex * along + wob * 0.05;
+      const wy = sim.y + ey * along;
+      const [sx, sy] = worldToScreen(wx, wy);
+      ctx.fillRect(sx - 14 + wob, sy, 28, 1);
+    }
+  }
+
+  // ---- Dropped fuel tank tumbling away --------------------------------------
+  function drawDroppedTank(ctx, d, worldToScreen) {
+    const part = Parts.byId(d.partId);
+    if (!part) return;
+    const [sx, sy] = worldToScreen(d.x, d.y);
+    const fade = Math.min(1, d.life / 1.0);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(d.angle);
+    ctx.globalAlpha = fade;
+    // draw the part centered, with bottom anchor at +halfH
+    const halfH = part.height * STACK_SCALE / 2;
+    // emit a sputter flame if it was burning when dropped
+    const frame = d.onFire && d.life > 1.5 ? { thrusting: true, t: (d.life * 60) | 0 } : null;
+    part.sprite(ctx, 0, halfH, STACK_SCALE, frame);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ---- Satellites drifting at high altitude ---------------------------------
+  function updateSatellites(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    // spawn occasionally between 80k and 900k ft
+    if (altFt > 60000 && altFt < 900000 && F.satellites.length < 3) {
+      if (Math.random() < dt * 0.18) {
+        const fromRight = Math.random() < 0.5;
+        F.satellites.push({
+          // place in world coords near rocket so they pass through view
+          x: s.x + (fromRight ? 60 : -60),
+          y: s.y + (Math.random() - 0.3) * 60,
+          vx: (fromRight ? -1 : 1) * (4 + Math.random() * 5),
+          vy: (Math.random() - 0.5) * 1.5,
+          spin: (Math.random() - 0.5) * 0.4,
+          t: 0,
+          variant: Math.floor(Math.random() * 3),
+        });
+      }
+    }
+    F.satellites.forEach(sat => {
+      sat.x += sat.vx * dt;
+      sat.y += sat.vy * dt;
+      sat.t += dt;
+    });
+    // GC when far from rocket
+    F.satellites = F.satellites.filter(sat =>
+      Math.abs(sat.x - s.x) < 100 && Math.abs(sat.y - s.y) < 100);
+  }
+
+  function drawSatellites(ctx, W, H, worldToScreen) {
+    F.satellites.forEach(sat => {
+      const [sx, sy] = worldToScreen(sat.x, sat.y);
+      if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) return;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(sat.spin * sat.t);
+      drawSatellite(ctx, sat);
+      ctx.restore();
+    });
+  }
+
+  function drawSatellite(ctx, sat) {
+    const glint = (Math.sin(sat.t * 3) + 1) * 0.5;
+    if (sat.variant === 0) {
+      // ISS-style: panels on both sides of central truss
+      ctx.fillStyle = '#1a3060';
+      ctx.fillRect(-18, -2, 12, 4);
+      ctx.fillRect(6, -2, 12, 4);
+      // panel grid
+      ctx.fillStyle = '#3a6090';
+      for (let i = 0; i < 3; i++) {
+        ctx.fillRect(-17 + i * 4, -2, 1, 4);
+        ctx.fillRect(7 + i * 4, -2, 1, 4);
+      }
+      // truss
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillRect(-6, -1, 12, 2);
+      // body
+      ctx.fillStyle = '#dddddd';
+      ctx.fillRect(-3, -3, 6, 6);
+      // glint
+      ctx.fillStyle = 'rgba(255,255,200,' + (0.5 + glint * 0.5) + ')';
+      ctx.fillRect(-2, -2, 1, 1);
+    } else if (sat.variant === 1) {
+      // dish-style satellite
+      ctx.fillStyle = '#cccccc';
+      // dish
+      ctx.beginPath();
+      ctx.arc(0, -2, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#888';
+      ctx.beginPath();
+      ctx.arc(0, -2, 4, 0, Math.PI * 2);
+      ctx.fill();
+      // body
+      ctx.fillStyle = '#444';
+      ctx.fillRect(-3, 2, 6, 5);
+      // small panel
+      ctx.fillStyle = '#1a3060';
+      ctx.fillRect(-10, 3, 6, 3);
+      ctx.fillRect(4, 3, 6, 3);
+      // glint
+      ctx.fillStyle = 'rgba(255,255,255,' + glint + ')';
+      ctx.fillRect(-1, -3, 1, 1);
+    } else {
+      // tumbling junk satellite (out of service)
+      ctx.fillStyle = '#777';
+      ctx.fillRect(-5, -3, 10, 6);
+      ctx.fillStyle = '#aaa';
+      ctx.fillRect(-4, -2, 6, 1);
+      // gold foil flapping
+      ctx.fillStyle = '#ddaa55';
+      ctx.fillRect(5, -3, 4, 6);
+      ctx.fillStyle = '#886633';
+      ctx.fillRect(5, 0, 4, 1);
+      // broken antenna
+      ctx.fillStyle = '#444';
+      ctx.fillRect(0, -7, 1, 4);
+    }
+  }
+
+  // ---- Mountain silhouettes at low altitude ---------------------------------
+  function drawMountains(ctx, W, H, altFt, x) {
+    if (altFt > 5500) return;
+    const fade = Math.min(1, (5500 - altFt) / 1500);
+    const ppm = F.sim.lastPpm || PIXEL_PER_M_BASE;
+    const groundY = H * 0.65 + altFt * 0.04 * ppm;
+    // far range — distant haze blue
+    ctx.fillStyle = 'rgba(60, 75, 110,' + (0.55 * fade) + ')';
+    for (let i = 0; i < 10; i++) {
+      const seed = i * 137;
+      const mx = ((seed - x * 0.18) % (W + 200) + W + 200) % (W + 200) - 100;
+      const peak = 28 + (seed % 16);
+      const w = 80 + (seed % 30);
+      ctx.beginPath();
+      ctx.moveTo(mx - w / 2, groundY);
+      ctx.lineTo(mx, groundY - peak);
+      ctx.lineTo(mx + w / 2, groundY);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // near range — darker, taller, with snow caps
+    ctx.fillStyle = 'rgba(40, 55, 80,' + (0.85 * fade) + ')';
+    for (let i = 0; i < 6; i++) {
+      const seed = i * 211;
+      const mx = ((seed - x * 0.4) % (W + 220) + W + 220) % (W + 220) - 110;
+      const peak = 60 + (seed % 24);
+      const w = 120 + (seed % 40);
+      ctx.beginPath();
+      ctx.moveTo(mx - w / 2, groundY);
+      ctx.lineTo(mx - w / 8, groundY - peak * 0.7);
+      ctx.lineTo(mx, groundY - peak);
+      ctx.lineTo(mx + w / 6, groundY - peak * 0.6);
+      ctx.lineTo(mx + w / 2, groundY);
+      ctx.closePath();
+      ctx.fill();
+      // snow cap
+      ctx.fillStyle = 'rgba(220, 230, 245,' + (0.7 * fade) + ')';
+      ctx.beginPath();
+      ctx.moveTo(mx - 6, groundY - peak * 0.8);
+      ctx.lineTo(mx, groundY - peak);
+      ctx.lineTo(mx + 5, groundY - peak * 0.75);
+      ctx.lineTo(mx + 2, groundY - peak * 0.7);
+      ctx.lineTo(mx - 3, groundY - peak * 0.7);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(40, 55, 80,' + (0.85 * fade) + ')';
+    }
+  }
+
+  // ---- Atmospheric wind streaks ---------------------------------------------
+  function drawWindStreaks(ctx, W, H, altFt, modifier, time) {
+    if (altFt < 800 || altFt > 28000) return;
+    const baseIntensity = 0.25;
+    const stormy = modifier && (modifier.id === 'gusty' || modifier.id === 'storm');
+    const intensity = baseIntensity * (stormy ? 3.5 : 1);
+    const count = Math.floor(14 * intensity);
+    ctx.fillStyle = 'rgba(255, 255, 255,' + (0.10 * intensity) + ')';
+    for (let i = 0; i < count; i++) {
+      const speed = 60 + (i * 17) % 80;
+      const phase = (time * speed + i * 73) % (W + 80);
+      const y = (i * 31 + (i * 7) % H) % H;
+      const len = 8 + (i * 3) % 14;
+      ctx.fillRect(W - phase - len, y, len, 1);
+    }
   }
 
   // ---- Engine glow halo -----------------------------------------------------
