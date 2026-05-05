@@ -31,8 +31,8 @@
   }
 
   function refreshTitle() {
-    $('#title-best').textContent = 'Best: ' + formatFt(Game.state.bestAltitude);
-    $('#title-scrap').textContent = 'Scrap: ' + Game.state.scrap;
+    $('#title-best').textContent = formatFt(Game.state.bestAltitude).toUpperCase();
+    $('#title-scrap').textContent = Game.state.scrap.toString();
   }
 
   function formatFt(v) {
@@ -62,7 +62,7 @@
       card.innerHTML = `
         <h4>${ch.title}</h4>
         <p>${ch.description}</p>
-        <div style="font-size:11px;color:var(--ink-dim)">Reward: ${ch.reward} scrap, ${ch.dataReward} data</div>
+        <div style="font-size:10px;letter-spacing:0.18em;color:var(--ink-soft);font-weight:900;border-top:1px dashed var(--paper-line);padding-top:8px;margin-top:8px">REWARD: ${ch.reward} SCRAP · ${ch.dataReward} DATA</div>
       `;
       const btn = document.createElement('button');
       btn.className = 'btn btn-small btn-primary';
@@ -209,14 +209,23 @@
 
   function renderResult(result, rewards) {
     const titleEl = $('#result-title');
+    const stampEl = $('#result-stamp');
     if (result.success) {
-      titleEl.textContent = 'MOONSHOT';
+      titleEl.textContent = 'MOONSHOT CONFIRMED';
       titleEl.classList.add('success');
+      if (stampEl) {
+        stampEl.textContent = 'MISSION SUCCESS';
+        stampEl.classList.add('success');
+      }
     } else {
-      titleEl.textContent = result.crashReason || 'CRASH';
+      titleEl.textContent = result.crashReason || 'VEHICLE LOSS';
       titleEl.classList.remove('success');
+      if (stampEl) {
+        stampEl.textContent = pickStampText(result);
+        stampEl.classList.remove('success');
+      }
     }
-    $('#result-alt').textContent = formatFt(result.altitude).replace(/ ft$/, '');
+    $('#result-alt').textContent = formatFt(result.altitude).replace(/ ft$/, '').toUpperCase();
     $('#result-flair').textContent = pickFlair(result);
 
     const list = $('#result-rewards');
@@ -237,6 +246,14 @@
       list.innerHTML += `<li class="unlock"><span>Unlocked</span><b>${part ? part.name : pid}</b></li>`;
     });
     if (!list.innerHTML) list.innerHTML = '<li><span>Nothing salvaged</span><b>—</b></li>';
+  }
+
+  function pickStampText(result) {
+    if (result.altitude >= 250000) return 'NEAR MISS';
+    if (result.altitude >= 50000) return 'PARTIAL DATA';
+    if (result.altitude >= 5000) return 'RECOVERED';
+    if (result.altitude >= 500) return 'INCIDENT';
+    return 'TOTAL LOSS';
   }
 
   function pickFlair(result) {

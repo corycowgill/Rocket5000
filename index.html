@@ -13,22 +13,68 @@
   <!-- TITLE SCREEN -->
   <section id="screen-title" class="screen active">
     <div class="title-stars" aria-hidden="true"></div>
-    <div class="title-content">
+    <div class="briefing-folder">
+      <div class="caution-stripe top">DO NOT EXCEED ATMOSPHERIC LIMITS</div>
+      <div class="folder-stamps">
+        <span class="stamp stamp-blue">PROJECT&nbsp;5000</span>
+        <span class="stamp stamp-red">DRAFT</span>
+        <span class="stamp">FOR INTERNAL USE</span>
+      </div>
+
+      <div class="patch-wrap">
+        <svg class="mission-patch" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs>
+            <path id="patch-arc-top" d="M 22 100 a 78 78 0 0 1 156 0" fill="none"/>
+            <path id="patch-arc-bot" d="M 178 100 a 78 78 0 0 1 -156 0" fill="none"/>
+          </defs>
+          <circle cx="100" cy="100" r="96" fill="#0b3d91" stroke="#1c1812" stroke-width="4"/>
+          <circle cx="100" cy="100" r="78" fill="#ebe1c7" stroke="#1c1812" stroke-width="2"/>
+          <g fill="#0b3d91">
+            <circle cx="60" cy="65" r="1.4"/>
+            <circle cx="78" cy="50" r="1"/>
+            <circle cx="120" cy="55" r="1.2"/>
+            <circle cx="140" cy="78" r="1"/>
+            <circle cx="50" cy="92" r="1"/>
+          </g>
+          <circle cx="138" cy="72" r="14" fill="#d8caa3" stroke="#7d6f43" stroke-width="1.5"/>
+          <circle cx="142" cy="70" r="2" fill="#7d6f43"/>
+          <circle cx="134" cy="76" r="1.5" fill="#7d6f43"/>
+          <path d="M92,148 L96,168 L100,156 L104,168 L108,148 Z" fill="#d52232"/>
+          <path d="M95,152 L99,162 L103,152 Z" fill="#f6c61f"/>
+          <rect x="92" y="106" width="16" height="42" fill="#ebe1c7" stroke="#1c1812" stroke-width="2"/>
+          <rect x="92" y="120" width="16" height="6" fill="#d52232"/>
+          <path d="M92,106 L108,106 L100,82 Z" fill="#d52232" stroke="#1c1812" stroke-width="2"/>
+          <path d="M92,140 L84,150 L92,150 Z" fill="#1c1812"/>
+          <path d="M108,140 L116,150 L108,150 Z" fill="#1c1812"/>
+          <text font-family="ui-monospace, monospace" font-size="13" font-weight="900" fill="#ebe1c7" letter-spacing="2">
+            <textPath href="#patch-arc-top" startOffset="50%" text-anchor="middle">SCRAP ROCKET · MISSION 5000</textPath>
+          </text>
+          <text font-family="ui-monospace, monospace" font-size="10" font-weight="700" fill="#ebe1c7" letter-spacing="3">
+            <textPath href="#patch-arc-bot" startOffset="50%" text-anchor="middle">AD ASTRA PER SCRAPIA</textPath>
+          </text>
+        </svg>
+      </div>
+
       <h1 class="logo">
-        <span class="logo-line-1">SCRAP ROCKET</span>
-        <span class="logo-line-2">Moonshot Mayhem</span>
+        <span class="logo-line-1">SCRAP ROCKET 5000</span>
+        <span class="logo-line-2">MOONSHOT&nbsp;MAYHEM</span>
       </h1>
-      <p class="tagline">Build it. Launch it. Watch it explode.</p>
+
       <div class="menu">
-        <button class="btn btn-primary" data-go="hangar">PLAY</button>
-        <button class="btn" data-go="challenges">CHALLENGES</button>
-        <button class="btn" data-go="sandbox">SANDBOX</button>
-        <button class="btn btn-ghost" data-go="help">HOW TO PLAY</button>
+        <button class="btn btn-primary launch-cta" data-go="hangar">
+          <span class="btn-light"></span><span class="btn-label">INITIATE LAUNCH</span>
+        </button>
+        <button class="btn console-btn" data-go="challenges">MISSION ROSTER</button>
+        <button class="btn console-btn" data-go="sandbox">TEST RANGE</button>
+        <button class="btn console-btn" data-go="help">MISSION BRIEFING</button>
       </div>
-      <div class="title-meta">
-        <span id="title-best">Best: 0 ft</span>
-        <span id="title-scrap">Scrap: 0</span>
+
+      <div class="title-meta dsky-strip">
+        <div class="dsky-cell"><label>BEST APOGEE</label><b id="title-best">0 FT</b></div>
+        <div class="dsky-cell"><label>SCRAP</label><b id="title-scrap">0</b></div>
       </div>
+
+      <div class="caution-stripe bottom">AUTHORIZED PERSONNEL ONLY · 1969-PRESENT</div>
     </div>
   </section>
 
@@ -36,7 +82,10 @@
   <section id="screen-hangar" class="screen">
     <header class="topbar">
       <button class="btn btn-icon" data-go="title" title="Back">&larr;</button>
-      <div class="topbar-title">HANGAR</div>
+      <div class="topbar-title">
+        <span class="topbar-tag">BAY 5</span>
+        <span>VEHICLE&nbsp;ASSEMBLY</span>
+      </div>
       <div class="topbar-stats">
         <span class="stat" id="hangar-scrap">SCRAP 0</span>
         <span class="stat" id="hangar-data">DATA 0</span>
@@ -44,7 +93,8 @@
     </header>
 
     <div class="hangar-layout">
-      <aside class="parts-panel" aria-label="Parts">
+      <aside class="parts-panel panel-rivets" aria-label="Parts">
+        <div class="panel-label">PARTS&nbsp;BIN</div>
         <div class="parts-tabs">
           <button class="tab active" data-cat="engine">Engines</button>
           <button class="tab" data-cat="fuel">Fuel</button>
@@ -63,19 +113,20 @@
         </div>
       </main>
 
-      <aside class="stats-panel" aria-label="Rocket stats">
-        <h3>ROCKET</h3>
+      <aside class="stats-panel panel-rivets" aria-label="Rocket stats">
+        <div class="panel-label">FLIGHT&nbsp;READINESS</div>
+        <h3>VEHICLE DESIGNATION</h3>
         <div class="rocket-name" id="rocket-name">Untitled Junk</div>
-        <ul class="stats-list">
-          <li><span>Mass</span><b id="stat-mass">0 kg</b></li>
-          <li><span>Thrust</span><b id="stat-thrust">0 kN</b></li>
+        <ul class="stats-list dsky-list">
+          <li><span>MASS</span><b id="stat-mass">0 kg</b></li>
+          <li><span>THRUST</span><b id="stat-thrust">0 kN</b></li>
           <li><span>TWR</span><b id="stat-twr">0.0</b></li>
-          <li><span>Fuel</span><b id="stat-fuel">0 L</b></li>
-          <li><span>Stages</span><b id="stat-stages">0</b></li>
-          <li><span>Stability</span><b id="stat-stab">0%</b></li>
-          <li><span>Jank</span><b id="stat-jank">0%</b></li>
+          <li><span>FUEL</span><b id="stat-fuel">0 L</b></li>
+          <li><span>STAGES</span><b id="stat-stages">0</b></li>
+          <li><span>STABILITY</span><b id="stat-stab">0%</b></li>
+          <li><span>JANK</span><b id="stat-jank">0%</b></li>
         </ul>
-        <div class="personality" id="rocket-personality">No personality yet</div>
+        <div class="personality" id="rocket-personality">FLIGHT PROFILE: PENDING ASSESSMENT</div>
         <button class="btn btn-primary btn-launch" id="btn-launch">LAUNCH &uarr;</button>
       </aside>
     </div>
@@ -85,11 +136,11 @@
   <section id="screen-flight" class="screen">
     <canvas id="flight-canvas"></canvas>
     <div class="flight-hud">
-      <div class="hud-top">
-        <div class="hud-cell"><label>ALT</label><b id="hud-alt">0 ft</b></div>
-        <div class="hud-cell"><label>VEL</label><b id="hud-vel">0</b></div>
-        <div class="hud-cell"><label>FUEL</label><b id="hud-fuel">0%</b></div>
-        <div class="hud-cell"><label>HULL</label><b id="hud-hull">100%</b></div>
+      <div class="hud-top dsky-strip">
+        <div class="dsky-cell"><label>ALT</label><b id="hud-alt">0 FT</b></div>
+        <div class="dsky-cell"><label>VEL</label><b id="hud-vel">0</b></div>
+        <div class="dsky-cell"><label>FUEL</label><b id="hud-fuel">0%</b></div>
+        <div class="dsky-cell"><label>HULL</label><b id="hud-hull">100%</b></div>
       </div>
       <div class="hud-strip">
         <div class="hud-modifier" id="hud-modifier"></div>
@@ -109,15 +160,22 @@
 
   <!-- RESULTS -->
   <section id="screen-result" class="screen">
-    <div class="result-card">
-      <h2 id="result-title">CRASH</h2>
-      <div class="result-altitude"><span id="result-alt">0</span> <small>ft</small></div>
-      <div class="result-flair" id="result-flair">Spectacular failure.</div>
-      <ul class="result-rewards" id="result-rewards"></ul>
+    <div class="result-card panel-rivets">
+      <div class="caution-stripe top">POST-MISSION REPORT · FILE 5000-R</div>
+      <div class="result-stamp" id="result-stamp">RECOVERED</div>
+      <div class="result-form">
+        <div class="form-row"><label>OUTCOME</label><b id="result-title">CRASH</b></div>
+        <div class="form-row apogee">
+          <label>APOGEE</label>
+          <div class="result-altitude dsky-readout"><span id="result-alt">0</span> <small>FT</small></div>
+        </div>
+        <div class="result-flair" id="result-flair">Spectacular failure.</div>
+        <ul class="result-rewards dsky-list" id="result-rewards"></ul>
+      </div>
       <div class="result-actions">
-        <button class="btn btn-primary" id="btn-retry">RETRY</button>
-        <button class="btn" id="btn-back-hangar">HANGAR</button>
-        <button class="btn btn-ghost" data-go="title">TITLE</button>
+        <button class="btn btn-primary" id="btn-retry">RE-FLIGHT</button>
+        <button class="btn console-btn" id="btn-back-hangar">HANGAR</button>
+        <button class="btn btn-ghost" data-go="title">DEBRIEF</button>
       </div>
     </div>
   </section>
@@ -126,7 +184,10 @@
   <section id="screen-challenges" class="screen">
     <header class="topbar">
       <button class="btn btn-icon" data-go="title">&larr;</button>
-      <div class="topbar-title">DAILY CHALLENGE</div>
+      <div class="topbar-title">
+        <span class="topbar-tag">ORDER&nbsp;5000-D</span>
+        <span>MISSION&nbsp;ROSTER</span>
+      </div>
       <div></div>
     </header>
     <div class="challenge-body" id="challenge-body"></div>
@@ -136,12 +197,19 @@
   <section id="screen-sandbox" class="screen">
     <header class="topbar">
       <button class="btn btn-icon" data-go="title">&larr;</button>
-      <div class="topbar-title">SANDBOX</div>
+      <div class="topbar-title">
+        <span class="topbar-tag">RANGE-7</span>
+        <span>TEST&nbsp;FACILITY</span>
+      </div>
       <div></div>
     </header>
     <div class="sandbox-body">
-      <p>Sandbox unlocks every part. Crash without consequence.</p>
-      <button class="btn btn-primary" id="btn-sandbox-go">ENTER HANGAR</button>
+      <div class="briefing-paper panel-rivets">
+        <h3>UNCONTROLLED FLIGHT TEST</h3>
+        <p>All parts authorized. No telemetry recorded. Recovery scrap waived.</p>
+        <p class="paper-fineprint">Per Directive 5000.4 §B: failure to log results constitutes failure to fail.</p>
+        <button class="btn btn-primary" id="btn-sandbox-go">PROCEED TO BAY 5</button>
+      </div>
     </div>
   </section>
 
@@ -149,7 +217,10 @@
   <section id="screen-help" class="screen">
     <header class="topbar">
       <button class="btn btn-icon" data-go="title">&larr;</button>
-      <div class="topbar-title">HOW TO PLAY</div>
+      <div class="topbar-title">
+        <span class="topbar-tag">DOC&nbsp;5000-B</span>
+        <span>MISSION&nbsp;BRIEFING</span>
+      </div>
       <div></div>
     </header>
     <div class="help-body">
