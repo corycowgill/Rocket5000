@@ -423,12 +423,66 @@ canvas {
   min-height: 24px;
   letter-spacing: 0.1em;
 }
+.hud-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
 .touch-controls {
   display: grid;
   grid-template-columns: 1fr 2fr 1fr;
   gap: 8px;
   pointer-events: auto;
 }
+.touch-stage {
+  align-self: flex-end;
+  width: 130px;
+  padding: 12px;
+  background: rgba(124, 70, 30, 0.85);
+  color: var(--ink);
+  font-size: 14px;
+  letter-spacing: 0.15em;
+}
+.touch-stage:active, .touch-stage.held {
+  background: var(--rust);
+  color: #1a1100;
+}
+.touch-stage.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.hud-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  pointer-events: none;
+}
+.hud-modifier {
+  background: rgba(124, 70, 30, 0.7);
+  border: 2px solid var(--rust);
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: var(--ink);
+  min-height: 14px;
+}
+.hud-modifier.empty { visibility: hidden; }
+.hud-combo {
+  background: rgba(255, 85, 119, 0.85);
+  border: 2px solid #2a0011;
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.hud-combo.show { opacity: 1; }
 .touch-btn {
   font-family: inherit;
   font-weight: 900;

@@ -71,6 +71,7 @@
           <li><span>Thrust</span><b id="stat-thrust">0 kN</b></li>
           <li><span>TWR</span><b id="stat-twr">0.0</b></li>
           <li><span>Fuel</span><b id="stat-fuel">0 L</b></li>
+          <li><span>Stages</span><b id="stat-stages">0</b></li>
           <li><span>Stability</span><b id="stat-stab">0%</b></li>
           <li><span>Jank</span><b id="stat-jank">0%</b></li>
         </ul>
@@ -90,11 +91,18 @@
         <div class="hud-cell"><label>FUEL</label><b id="hud-fuel">0%</b></div>
         <div class="hud-cell"><label>HULL</label><b id="hud-hull">100%</b></div>
       </div>
+      <div class="hud-strip">
+        <div class="hud-modifier" id="hud-modifier"></div>
+        <div class="hud-combo" id="hud-combo"></div>
+      </div>
       <div class="hud-msg" id="hud-msg"></div>
-      <div class="touch-controls">
-        <button class="touch-btn" id="touch-left">&larr;</button>
-        <button class="touch-btn touch-thrust" id="touch-thrust">THRUST</button>
-        <button class="touch-btn" id="touch-right">&rarr;</button>
+      <div class="hud-bottom">
+        <button class="touch-btn touch-stage" id="touch-stage" title="Drop spent stage (S)">STAGE</button>
+        <div class="touch-controls">
+          <button class="touch-btn" id="touch-left">&larr;</button>
+          <button class="touch-btn touch-thrust" id="touch-thrust">THRUST</button>
+          <button class="touch-btn" id="touch-right">&rarr;</button>
+        </div>
       </div>
     </div>
   </section>
@@ -149,8 +157,14 @@
       <p>Click a part on the left, then click on the rocket grid to place it. Stack parts vertically. You need at least one engine, one fuel tank, and one body.</p>
       <h3>FLYING</h3>
       <p>Hold <b>Space</b> or <b>THRUST</b> to burn fuel. Tap <b>&larr;/&rarr;</b> to steer. Don't oversteer or you'll spin out.</p>
+      <h3>STAGING</h3>
+      <p>Press <b>S</b> or the <b>STAGE</b> button to drop the bottom-most fuel tank (and anything below it) for a kick. Drop empty tanks to shed dead weight. Drop too early and you waste fuel.</p>
+      <h3>DODGE FOR COMBO</h3>
+      <p>Tilt to dodge birds, debris, and lightning. Each near-miss adds to your <b>PILOT</b> combo — a scrap multiplier that resets when you take a hit.</p>
+      <h3>WEATHER</h3>
+      <p>Each launch rolls a weather condition. <b>METEOR SHOWER</b>, <b>AURORA</b>, and <b>THUNDERSTORM</b> pay more scrap but raise the risk. <b>TAILWIND</b> is safer but pays less.</p>
       <h3>WINNING</h3>
-      <p>Reach <b>1,000,000 ft</b> to touch the moon. Crashes earn scrap. Higher altitudes unlock better parts.</p>
+      <p>Reach <b>1,000,000 ft</b> to touch the moon. Crashes earn scrap from altitude, milestones, and pilot combo. Higher altitudes unlock better parts.</p>
       <h3>JANK</h3>
       <p>Some parts are unreliable. Higher Jank means weirder flights.</p>
     </div>

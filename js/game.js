@@ -146,6 +146,20 @@
     let dataEarned = Math.floor(result.altitude / 5000);
     if (result.success) { scrapEarned += 500; dataEarned += 25; }
 
+    // milestone + combo bonuses (earned during flight)
+    scrapEarned += result.milestoneBonus || 0;
+    scrapEarned += result.comboBonus || 0;
+
+    // weather modifier multiplier on the whole take
+    if (result.modifierScrapMul && result.modifierScrapMul !== 1) {
+      scrapEarned = Math.floor(scrapEarned * result.modifierScrapMul);
+    }
+
+    // staging bonus — encourages multi-stage builds
+    if (result.stageCount) {
+      scrapEarned += result.stageCount * 25;
+    }
+
     // challenge bonus
     if (Game.activeChallenge) {
       const ch = Game.activeChallenge;
@@ -207,7 +221,15 @@
 
     const list = $('#result-rewards');
     list.innerHTML = '';
-    if (rewards.scrapEarned) list.innerHTML += `<li><span>Scrap</span><b>+${rewards.scrapEarned}</b></li>`;
+    if (result.modifierLabel && result.modifierId !== 'calm') {
+      const mulPct = Math.round((result.modifierScrapMul - 1) * 100);
+      const mulStr = mulPct >= 0 ? '+' + mulPct + '%' : mulPct + '%';
+      list.innerHTML += `<li><span>Weather</span><b>${result.modifierLabel} ${mulStr}</b></li>`;
+    }
+    if (result.stageCount) list.innerHTML += `<li><span>Stages dropped</span><b>${result.stageCount}</b></li>`;
+    if (result.milestoneBonus) list.innerHTML += `<li><span>Milestones</span><b>+${result.milestoneBonus}</b></li>`;
+    if (result.comboBonus) list.innerHTML += `<li><span>Pilot bonus</span><b>+${result.comboBonus}</b></li>`;
+    if (rewards.scrapEarned) list.innerHTML += `<li><span>Scrap total</span><b>+${rewards.scrapEarned}</b></li>`;
     if (rewards.dataEarned) list.innerHTML += `<li><span>Data</span><b>+${rewards.dataEarned}</b></li>`;
     if (result.success) list.innerHTML += `<li class="unlock"><span>Achievement</span><b>MOON LANDED</b></li>`;
     rewards.unlocks.forEach(pid => {

@@ -103,10 +103,33 @@
     F.ctx.imageSmoothingEnabled = false;
   }
 
+  // ---- weather modifiers ----------------------------------------------------
+  const MODIFIERS = [
+    { id: 'calm',    label: 'CALM',          windMul: 1.0, debrisMul: 1.0, lightningMul: 1.0, tailwind: 0,    scrapMul: 1.0 },
+    { id: 'gusty',   label: 'GUSTY',         windMul: 2.5, debrisMul: 1.0, lightningMul: 1.0, tailwind: 0,    scrapMul: 1.15 },
+    { id: 'storm',   label: 'THUNDERSTORM',  windMul: 1.6, debrisMul: 1.0, lightningMul: 3.0, tailwind: 0,    scrapMul: 1.25 },
+    { id: 'meteor',  label: 'METEOR SHOWER', windMul: 1.0, debrisMul: 3.0, lightningMul: 1.0, tailwind: 0,    scrapMul: 1.30 },
+    { id: 'tail',    label: 'TAILWIND',      windMul: 1.2, debrisMul: 1.0, lightningMul: 1.0, tailwind: 1.0,  scrapMul: 0.95 },
+    { id: 'aurora',  label: 'AURORA',        windMul: 1.0, debrisMul: 1.5, lightningMul: 2.0, tailwind: 0,    scrapMul: 1.40 },
+  ];
+
+  // altitude milestones (feet) — each fires once per run
+  const MILESTONES = [
+    { ft: 500,     label: 'CLEARED THE TREES',  bonus: 5 },
+    { ft: 2000,    label: 'BIRDS RESPECT YOU',  bonus: 15 },
+    { ft: 10000,   label: 'CLOUD LAYER',        bonus: 50 },
+    { ft: 50000,   label: 'STRATOSPHERE',       bonus: 150 },
+    { ft: 100000,  label: 'KÁRMÁN ENVY',        bonus: 400 },
+    { ft: 250000,  label: 'EXOSPHERE',          bonus: 800 },
+    { ft: 500000,  label: 'HALFWAY TO THE MOON',bonus: 1500 },
+    { ft: 1000000, label: 'MOON',               bonus: 5000 },
+  ];
+
   // ---- simulation init ------------------------------------------------------
-  function initSim(rocket) {
-    const stats = rocket.stats || Builder.getStats(rocket);
-    const fuelMass = stats.capacity * FUEL_MASS_PER_L;
+  function initSim(rocket, opts) {
+    opts = opts || {};
+    const modifier = opts.modifier || pickModifier();
+    const stats = recomputeStats(rocket, {});
     F.sim = {
       x: 0,
       y: 0,
@@ -119,29 +142,78 @@
       hull: 100 + stats.hullBonus,
       maxHull: 100 + stats.hullBonus,
       dryMass: stats.mass,
-      fuelMass,
+      fuelMass: stats.capacity * FUEL_MASS_PER_L,
       thrust: stats.thrust,
-      burnRate: sumBurnRate(rocket),
+      burnRate: stats.burnRate,
       stability: stats.stability,
       jank: stats.jank,
-      engines: rocket.parts.filter(pid => Parts.byId(pid)?.category === 'engine')
-        .map(pid => ({ id: pid, alive: true })),
+      engines: rocket.parts.map((pid, idx) => ({ pid, idx, alive: true }))
+        .filter(e => Parts.byId(e.pid)?.category === 'engine'),
+      dropped: {}, // index -> true for jettisoned parts
+      stageCount: 0,
       time: 0,
       maxAltitudeM: 0,
       crashed: false,
       moonReached: false,
       crashReason: null,
-      throttle: 0, // 0..1 smoothed
+      throttle: 0,
+      modifier,
+      // milestones
+      milestones: MILESTONES.map(m => ({ ...m, hit: false })),
+      milestoneScrapBonus: 0,
+      // combo
+      combo: 0,
+      comboT: 0,
+      comboBonus: 0,
+      // tracked hazards for combo (so we don't double-count)
+      hazardsTracked: new WeakSet ? new WeakSet() : null,
+      // flash overlays
+      flash: 0,
+      flashColor: '#ffffff',
+      shake: 0,
     };
   }
 
-  function sumBurnRate(rocket) {
-    let r = 0;
-    rocket.parts.forEach(pid => {
+  function recomputeStats(rocket, dropped) {
+    let mass = 0, capacity = 0, hullBonus = 0, stability = 0, jank = 0;
+    let burnRate = 0, thrust = 0, engineCount = 0;
+    rocket.parts.forEach((pid, i) => {
+      if (dropped && dropped[i]) return;
       const p = Parts.byId(pid);
-      if (p && p.category === 'engine') r += p.burnRate;
+      if (!p) return;
+      mass += p.mass;
+      if (p.category === 'engine') {
+        thrust += p.thrust;
+        burnRate += p.burnRate;
+        jank += p.jank;
+        engineCount++;
+      }
+      if (p.category === 'fuel') capacity += p.capacity;
+      if (p.category === 'body') {
+        stability += p.stability || 0;
+        hullBonus += p.hullBonus || 0;
+      }
     });
-    return r;
+    if (rocket.finId) {
+      const f = Parts.byId(rocket.finId);
+      if (f) { mass += f.mass; stability += f.stability; }
+    }
+    return {
+      mass, capacity, hullBonus, thrust, burnRate,
+      stability: Math.min(100, Math.round(stability)),
+      jank: engineCount > 0 ? Math.round(jank / engineCount) : 0,
+    };
+  }
+
+  function pickModifier() {
+    // Mostly calm, some weather variety; slight bias to interesting.
+    const roll = Math.random();
+    if (roll < 0.35) return MODIFIERS[0]; // calm
+    if (roll < 0.55) return MODIFIERS[1]; // gusty
+    if (roll < 0.70) return MODIFIERS[2]; // storm
+    if (roll < 0.83) return MODIFIERS[3]; // meteor
+    if (roll < 0.93) return MODIFIERS[4]; // tail
+    return MODIFIERS[5]; // aurora
   }
 
   function initStars() {
@@ -165,6 +237,10 @@
       }
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') F.keys.left = true;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') F.keys.right = true;
+      if (e.code === 'KeyS' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+        if (!e.repeat) jettisonStage();
+        e.preventDefault();
+      }
     });
     document.addEventListener('keyup', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') F.keys.thrust = false;
@@ -186,6 +262,96 @@
     bindTouch('#touch-left', 'left');
     bindTouch('#touch-right', 'right');
     bindTouch('#touch-thrust', 'thrust');
+
+    const stageBtn = $('#touch-stage');
+    const stageHandler = (e) => { jettisonStage(); e.preventDefault(); };
+    stageBtn.addEventListener('click', stageHandler);
+    stageBtn.addEventListener('touchstart', stageHandler, { passive: false });
+  }
+
+  // ---- staging --------------------------------------------------------------
+  function jettisonStage() {
+    if (!F.sim || F.sim.exiting) return false;
+    const s = F.sim;
+    // find bottom-most still-attached fuel tank
+    let lowestFuelIdx = -1;
+    for (let i = 0; i < F.rocket.parts.length; i++) {
+      if (s.dropped[i]) continue;
+      const p = Parts.byId(F.rocket.parts[i]);
+      if (p && p.category === 'fuel') { lowestFuelIdx = i; break; }
+    }
+    if (lowestFuelIdx < 0) {
+      flashMsg('NOTHING TO STAGE');
+      return false;
+    }
+
+    // drop everything below + including that fuel tank that hasn't been dropped
+    const droppedNow = [];
+    for (let i = 0; i <= lowestFuelIdx; i++) {
+      if (!s.dropped[i]) {
+        s.dropped[i] = true;
+        droppedNow.push(i);
+      }
+    }
+    if (!droppedNow.length) return false;
+
+    // recompute physics stats from remaining parts
+    const next = recomputeStats(F.rocket, s.dropped);
+    s.dryMass = next.mass;
+    s.thrust = next.thrust;
+    s.burnRate = next.burnRate;
+    s.stability = next.stability;
+    s.jank = next.jank;
+    // fuel pool clamps to remaining tank capacity
+    if (s.fuel > next.capacity) s.fuel = next.capacity;
+    s.maxFuel = next.capacity;
+    s.fuelMass = next.capacity * FUEL_MASS_PER_L;
+    s.engines = s.engines.filter(e => !s.dropped[e.idx]);
+
+    // separation kick proportional to throttle (explosive bolts)
+    const kick = 5 + s.throttle * 6;
+    const ax = -Math.sin(s.angle);
+    const ay = -Math.cos(s.angle);
+    // kick the rocket forward (opposite of dropped direction = forward thrust direction)
+    s.vx += -ax * 0; // mostly vertical kick
+    s.vy += kick;
+
+    // visual: spawn debris flying away from rocket bottom
+    spawnStageDebris(s, droppedNow);
+    spawnExplosion(s.x + ax * 1, s.y + ay * 1, 0.7);
+    s.shake = Math.max(s.shake, 0.4);
+    s.stageCount++;
+    flashMsg('STAGE ' + s.stageCount + ' DROP');
+    Sfx.play('explosion');
+    return true;
+  }
+
+  function spawnStageDebris(s, indices) {
+    // launch a few chunky debris pieces downward in rocket-frame
+    const ax = -Math.sin(s.angle);
+    const ay = -Math.cos(s.angle);
+    for (let k = 0; k < 8; k++) {
+      const spread = (Math.random() - 0.5) * 4;
+      F.particles.push({
+        x: s.x + ax * 1.5 + spread * 0.3,
+        y: s.y + ay * 1.5 - 0.5,
+        vx: ax * (4 + Math.random() * 4) + (Math.random() - 0.5) * 6 + s.vx * 0.5,
+        vy: ay * (6 + Math.random() * 4) + (Math.random() - 0.5) * 4 + s.vy * 0.5,
+        life: 1.2 + Math.random() * 0.8,
+        color: ['#aaaaaa', '#888888', '#cc4444', '#ffcc33'][k % 4],
+        size: 3 + Math.random() * 3,
+      });
+    }
+  }
+
+  function canStage() {
+    if (!F.sim) return false;
+    for (let i = 0; i < F.rocket.parts.length; i++) {
+      if (F.sim.dropped[i]) continue;
+      const p = Parts.byId(F.rocket.parts[i]);
+      if (p && p.category === 'fuel') return true;
+    }
+    return false;
   }
 
   // ---- main loop ------------------------------------------------------------
@@ -222,6 +388,12 @@
       success: F.sim.moonReached === true || altitudeFt >= MOON_ALTITUDE_FT,
       crashReason: F.sim.crashReason,
       time: F.sim.time,
+      milestoneBonus: F.sim.milestoneScrapBonus || 0,
+      comboBonus: F.sim.comboBonus || 0,
+      stageCount: F.sim.stageCount || 0,
+      modifierId: F.sim.modifier ? F.sim.modifier.id : 'calm',
+      modifierLabel: F.sim.modifier ? F.sim.modifier.label : 'CALM',
+      modifierScrapMul: F.sim.modifier ? F.sim.modifier.scrapMul : 1.0,
     };
   }
 
@@ -254,7 +426,7 @@
     // engine breakage
     s.engines.forEach(eng => {
       if (!eng.alive) return;
-      const part = Parts.byId(eng.id);
+      const part = Parts.byId(eng.pid);
       if (!part) return;
       if (s.throttle > 0.1 && Math.random() < part.breakChance * dt) {
         eng.alive = false;
@@ -262,12 +434,15 @@
         spawnExplosion(s.x, s.y - 0.5, part.catastrophic ? 1.5 : 0.6);
         if (part.catastrophic) s.hull -= 200;
         else s.hull -= 10;
+        s.shake = Math.max(s.shake || 0, part.catastrophic ? 0.9 : 0.5);
+        s.flash = Math.max(s.flash || 0, part.catastrophic ? 0.9 : 0.4);
+        s.flashColor = part.catastrophic ? '#ff3333' : '#ffaa44';
       }
     });
 
     const liveThrust = s.engines.reduce((sum, eng) => {
       if (!eng.alive) return sum;
-      const p = Parts.byId(eng.id);
+      const p = Parts.byId(eng.pid);
       let t = p.thrust;
       if (p.thrustVariance) {
         t *= 1 + (Math.random() * 2 - 1) * p.thrustVariance;
@@ -303,8 +478,8 @@
     s.vx += (ax + dragX) * dt;
     s.vy += (ayThrust - GRAVITY + dragY) * dt;
 
-    // angular dynamics
-    const controlAuth = 0.6 + (s.stability / 100) * 1.2;
+    // angular dynamics — snappier so dodging actually works
+    const controlAuth = 2.4 + (s.stability / 100) * 2.6;
     if (steerL) s.angVel -= controlAuth * dt;
     if (steerR) s.angVel += controlAuth * dt;
 
@@ -329,14 +504,53 @@
     // hazards
     updateHazards(dt, s);
 
-    // wind shear in mid atmosphere
+    // wind shear in mid atmosphere — scales with weather modifier
     const altFt = s.y * M_TO_FT;
     if (altFt > 2000 && altFt < 15000) {
-      // ribbons of wind every ~500ft
       const band = Math.floor(altFt / 500);
       const dir = ((band * 31) % 7) - 3; // -3..3
-      s.vx += dir * 0.3 * dt;
+      s.vx += dir * 0.3 * s.modifier.windMul * dt;
     }
+
+    // tailwind modifier: free upward push while atmosphere thick
+    if (s.modifier.tailwind > 0 && airDensity > 0.05) {
+      s.vy += s.modifier.tailwind * airDensity * 0.6 * dt;
+    }
+
+    // altitude milestones
+    s.milestones.forEach(m => {
+      if (!m.hit && altFt >= m.ft) {
+        m.hit = true;
+        s.milestoneScrapBonus += m.bonus;
+        flashMsg(m.label + '  +' + m.bonus);
+        s.flash = 0.6;
+        s.flashColor = m.ft >= 1000000 ? '#88ff88' : (m.ft >= 100000 ? '#ffcc33' : '#ffffff');
+        s.shake = Math.max(s.shake, 0.25);
+        Sfx.play('snap');
+      }
+    });
+
+    // apex ghost line crossing — fanfare when we beat our previous best
+    if (Game.state && !s.apexCrossed && s.maxAltitudeM > 0) {
+      const bestM = (Game.state.bestAltitude || 0) / M_TO_FT;
+      if (bestM > 50 && s.y >= bestM) {
+        s.apexCrossed = true;
+        flashMsg('NEW RECORD');
+        s.flash = 0.8;
+        s.flashColor = '#ffcc33';
+        Sfx.play('win');
+      }
+    }
+
+    // combo decay
+    if (s.combo > 0) {
+      s.comboT -= dt;
+      if (s.comboT <= 0) s.combo = 0;
+    }
+
+    // shake + flash decay
+    if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 1.6);
+    if (s.shake > 0) s.shake = Math.max(0, s.shake - dt * 1.2);
 
     // collision: ground
     if (s.y < 0 && s.vy < 0) {
@@ -392,15 +606,16 @@
     });
     F.particles = F.particles.filter(p => p.life > 0);
 
-    // exhaust particles
+    // exhaust particles (fire opposite the thrust direction so they trail behind tilted rockets)
     if (s.throttle > 0.1 && s.fuel > 0 && burningEngines > 0) {
+      const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
       for (let i = 0; i < 2; i++) {
-        const colorPart = Parts.byId(s.engines.find(e => e.alive)?.id);
+        const colorPart = Parts.byId(s.engines.find(e => e.alive)?.pid);
         F.particles.push({
-          x: s.x + (Math.random() - 0.5) * 0.5,
-          y: s.y - 0.5,
-          vx: (Math.random() - 0.5) * 2 + s.vx * 0.5,
-          vy: -8 - Math.random() * 4 + s.vy * 0.2 - Math.cos(s.angle) * 6,
+          x: s.x + ex * 0.6 + (Math.random() - 0.5) * 0.3,
+          y: s.y + ey * 0.6 + (Math.random() - 0.5) * 0.3,
+          vx: ex * (8 + Math.random() * 4) + s.vx * 0.3 + (Math.random() - 0.5) * 2,
+          vy: ey * (8 + Math.random() * 4) + s.vy * 0.3 + (Math.random() - 0.5) * 2,
           life: 0.4 + Math.random() * 0.2,
           color: colorPart?.flameColor || '#ffcc33',
           size: 2 + Math.random() * 2,
@@ -436,9 +651,15 @@
   function updateHazards(dt, s) {
     const altFt = s.y * M_TO_FT;
 
-    // spawn check
-    if (Math.random() < dt * spawnRate(altFt)) {
-      const type = pickHazardType(altFt);
+    // spawn check (modifier scales)
+    let rate = spawnRate(altFt);
+    const mod = s.modifier;
+    if (mod) {
+      // Different modifiers boost different hazard types — applied in pickHazardType
+      rate *= 1.0;
+    }
+    if (Math.random() < dt * rate) {
+      const type = pickHazardType(altFt, mod);
       if (type) F.hazards.push(makeHazard(type, s));
     }
 
@@ -447,51 +668,131 @@
       h.y += h.vy * dt;
       h.t += dt;
 
-      // collision: simple radius
-      const dx = h.x - s.x, dy = h.y - s.y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < (h.radius + 0.6) * (h.radius + 0.6)) {
-        if (h.type === 'bird') s.hull -= 12;
-        if (h.type === 'lightning') s.hull -= 25;
-        if (h.type === 'debris') s.hull -= 30;
-        spawnExplosion(s.x, s.y, 0.6);
-        h.dead = true;
-        flashMsg(h.type.toUpperCase() + ' STRIKE');
+      // lightning telegraphs for ~0.8s before activating, then dies after dieAt
+      if (h.type === 'lightning' && !h.armed && h.t > h.telegraph) {
+        h.armed = true;
+      }
+      if (h.dieAt && h.t > h.dieAt) h.dead = true;
+
+      // collision: simple radius. Lightning only damages while armed (the strike window).
+      if (h.type !== 'lightning' || h.armed) {
+        const dx = h.x - s.x, dy = h.y - s.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < (h.radius + 0.6) * (h.radius + 0.6) && !h.dead) {
+          if (h.type === 'bird') s.hull -= 12;
+          if (h.type === 'lightning') s.hull -= 25;
+          if (h.type === 'debris') s.hull -= 30;
+          spawnExplosion(s.x, s.y, 0.6);
+          h.dead = true;
+          h.hit = true;
+          // any hit resets combo
+          s.combo = 0;
+          flashMsg(h.type.toUpperCase() + ' STRIKE');
+          s.shake = Math.max(s.shake, 0.5);
+          s.flash = Math.max(s.flash || 0, 0.5);
+          s.flashColor = '#ff5577';
+        }
       }
     });
 
-    F.hazards = F.hazards.filter(h => !h.dead && Math.abs(h.x - s.x) < 80 && Math.abs(h.y - s.y) < 80);
+    // garbage collect & combo: hazards passing within close range without hitting
+    F.hazards = F.hazards.filter(h => {
+      const farX = Math.abs(h.x - s.x) > 30;
+      const farY = Math.abs(h.y - s.y) > 30;
+      const expired = h.t > 6;
+      const offscreen = farX || farY || expired;
+      if ((h.dead || offscreen) && !h.counted) {
+        h.counted = true;
+        if (!h.hit && h.t > 0.4) {
+          // close pass = combo
+          const dx = h.x - s.x, dy = h.y - s.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 25) {
+            s.combo += 1;
+            s.comboT = 3.0;
+            const bonus = 5 * s.combo;
+            s.comboBonus += bonus;
+            flashMsg('CLOSE CALL  +' + bonus);
+            Sfx.play('snap');
+          }
+        }
+      }
+      return !h.dead && !offscreen;
+    });
   }
 
   function spawnRate(altFt) {
     if (altFt < 100) return 0;
     if (altFt < 2000) return 0.6;       // birds
-    if (altFt < 15000) return 0.3;      // wind handled separately
-    if (altFt < 30000) return 0.4;      // lightning
-    if (altFt < 100000) return 0.2;
-    if (altFt < 800000) return 0.5;     // debris
-    return 0.2;
+    if (altFt < 15000) return 0.4;
+    if (altFt < 30000) return 0.5;      // lightning band
+    if (altFt < 100000) return 0.25;
+    if (altFt < 800000) return 0.6;     // debris
+    return 0.25;
   }
 
-  function pickHazardType(altFt) {
+  function pickHazardType(altFt, mod) {
+    // weather modifiers shift the mix
+    const lightningMul = mod ? mod.lightningMul : 1;
+    const debrisMul = mod ? mod.debrisMul : 1;
+
     if (altFt < 2000) return 'bird';
-    if (altFt < 30000 && Math.random() < 0.5) return 'lightning';
-    if (altFt > 30000) return 'debris';
-    return null;
+    if (altFt < 30000) {
+      // lightning vs nothing
+      const lProb = 0.4 * lightningMul;
+      return Math.random() < lProb ? 'lightning' : 'bird';
+    }
+    if (altFt < 80000) {
+      const lProb = 0.3 * lightningMul;
+      const dProb = 0.4 * debrisMul;
+      const r = Math.random();
+      if (r < lProb) return 'lightning';
+      if (r < lProb + dProb) return 'debris';
+      return null;
+    }
+    // high altitude: mostly debris
+    return Math.random() < (0.7 * debrisMul) ? 'debris' : null;
   }
 
   function makeHazard(type, s) {
     const side = Math.random() < 0.5 ? -1 : 1;
-    return {
-      type,
-      x: s.x + side * 25 + (Math.random() - 0.5) * 10,
-      y: s.y + (Math.random() - 0.3) * 30,
-      vx: -side * (3 + Math.random() * 4),
-      vy: type === 'debris' ? (Math.random() - 0.5) * 4 : (Math.random() - 0.5) * 2,
-      radius: type === 'lightning' ? 1.2 : 0.8,
-      t: 0,
-      dead: false,
-    };
+    if (type === 'bird') {
+      return {
+        type, x: s.x + side * 28 + (Math.random() - 0.5) * 4,
+        y: s.y + (Math.random() - 0.3) * 14,
+        vx: -side * (5 + Math.random() * 3),
+        vy: (Math.random() - 0.5) * 2,
+        radius: 0.7, t: 0, dead: false, telegraph: 0,
+      };
+    }
+    if (type === 'lightning') {
+      // strike where the rocket WILL be in `lookahead` seconds — player dodges
+      // by changing course mid-telegraph
+      const lookahead = 0.5;
+      return {
+        type,
+        x: s.x + s.vx * lookahead + (Math.random() - 0.5) * 4,
+        y: s.y + s.vy * lookahead,
+        vx: 0, vy: 0,
+        radius: 1.4,
+        t: 0,
+        dead: false,
+        armed: false,
+        telegraph: 0.5,
+        dieAt: 1.1,
+      };
+    }
+    if (type === 'debris') {
+      return {
+        type, x: s.x + side * 28 + (Math.random() - 0.5) * 8,
+        y: s.y + 6 + Math.random() * 18,
+        vx: -side * (6 + Math.random() * 3),
+        vy: -(2 + Math.random() * 4),
+        radius: 0.9, t: 0, dead: false, telegraph: 0,
+        spin: (Math.random() - 0.5) * 6,
+      };
+    }
+    return null;
   }
 
   // ---- render ---------------------------------------------------------------
@@ -501,6 +802,16 @@
     const W = c.clientWidth, H = c.clientHeight;
     const s = F.sim;
     const altFt = s.y * M_TO_FT;
+
+    // screen shake — translate the canvas a few pixels
+    let shakeX = 0, shakeY = 0;
+    if (s.shake > 0) {
+      const amp = s.shake * 8;
+      shakeX = (Math.random() - 0.5) * amp;
+      shakeY = (Math.random() - 0.5) * amp;
+    }
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
 
     // sky color stops
     const sky = skyGradient(ctx, W, H, altFt);
@@ -528,6 +839,9 @@
       const sy = H * 0.65 - (wy - s.y) * PIXEL_PER_M;
       return [sx, sy];
     };
+
+    // apex ghost line — your previous best altitude as a horizontal target line
+    drawApexGhost(ctx, W, H, s, worldToScreen);
 
     // hazards
     F.hazards.forEach(h => {
@@ -558,6 +872,35 @@
 
     // altitude tick marks on the right edge
     drawAltitudeRail(ctx, W, H, s.y);
+
+    ctx.restore();
+
+    // milestone / damage screen flash on top
+    if (s.flash > 0) {
+      const a = Math.min(0.5, s.flash * 0.5);
+      ctx.fillStyle = s.flashColor;
+      ctx.globalAlpha = a;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawApexGhost(ctx, W, H, s, worldToScreen) {
+    if (!global.Game || !global.Game.state) return;
+    const bestFt = global.Game.state.bestAltitude || 0;
+    if (bestFt < 200) return; // not worth showing for first run
+    const bestM = bestFt / M_TO_FT;
+    const [, sy] = worldToScreen(0, bestM);
+    if (sy < 30 || sy > H - 30) return;
+    const dashLen = 12, gap = 8;
+    ctx.fillStyle = 'rgba(255, 204, 51, 0.55)';
+    for (let x = 0; x < W; x += dashLen + gap) {
+      ctx.fillRect(x, sy, dashLen, 1);
+    }
+    ctx.fillStyle = 'rgba(255, 204, 51, 0.85)';
+    ctx.font = 'bold 10px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('▲ BEST ' + formatFt(bestFt), 8, sy - 4);
   }
 
   function skyGradient(ctx, W, H, altFt) {
@@ -664,22 +1007,42 @@
         ctx.fillRect(x + 2, y - 4, 6, 2);
       }
       ctx.fillRect(x - 2, y, 4, 3);
+      // beak — direction by vx
+      ctx.fillStyle = '#ffaa44';
+      ctx.fillRect(x + (h.vx > 0 ? 2 : -3), y + 1, 1, 1);
     } else if (h.type === 'lightning') {
-      ctx.fillStyle = '#ffff88';
-      ctx.fillRect(x, y - 20, 2, 8);
-      ctx.fillRect(x - 4, y - 12, 6, 2);
-      ctx.fillRect(x - 2, y - 10, 2, 8);
-      ctx.fillRect(x + 2, y - 4, 4, 2);
-      ctx.fillRect(x, y - 2, 2, 6);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x, y - 18, 2, 4);
+      if (!h.armed) {
+        // telegraph: pulsing warning marker
+        const pulse = (Math.sin(h.t * 18) + 1) * 0.5;
+        ctx.fillStyle = 'rgba(255,255,136,' + (0.3 + pulse * 0.5) + ')';
+        ctx.fillRect(x - 3, y - 30, 6, 60);
+        ctx.fillStyle = '#ffff88';
+        ctx.fillRect(x - 6, y - 4, 12, 2);
+        ctx.fillRect(x - 4, y - 7, 8, 1);
+        ctx.fillRect(x - 2, y - 10, 4, 1);
+      } else {
+        // strike: jagged bolt
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(x - 1, y - 30, 3, 60);
+        ctx.fillStyle = '#ffff88';
+        ctx.fillRect(x - 4, y - 22, 4, 3);
+        ctx.fillRect(x + 2, y - 12, 4, 3);
+        ctx.fillRect(x - 5, y - 2, 4, 3);
+        ctx.fillRect(x + 3, y + 8, 4, 3);
+      }
     } else if (h.type === 'debris') {
+      const ang = (h.spin || 0) * h.t;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(ang);
       ctx.fillStyle = '#777';
-      ctx.fillRect(x - 4, y - 4, 8, 8);
+      ctx.fillRect(-5, -5, 10, 10);
       ctx.fillStyle = '#aaa';
-      ctx.fillRect(x - 2, y - 2, 2, 2);
+      ctx.fillRect(-3, -3, 3, 3);
       ctx.fillStyle = '#333';
-      ctx.fillRect(x, y, 4, 2);
+      ctx.fillRect(0, 1, 4, 3);
+      ctx.fillRect(-4, 2, 2, 2);
+      ctx.restore();
     }
   }
 
@@ -698,17 +1061,20 @@
     }
 
     // build stack bottom-up; vertical draw with bottom at y=+halfH
-    const totalH = rocket.parts.reduce((sum, pid) => {
+    // dropped parts are skipped so the visible rocket shrinks as you stage
+    const totalH = rocket.parts.reduce((sum, pid, i) => {
+      if (sim.dropped && sim.dropped[i]) return sum;
       const p = Parts.byId(pid);
       return sum + (p ? p.height : 0);
     }, 0) * STACK_SCALE;
 
-    // bottom of rocket centered at translated origin (so center of mass at origin-ish)
+    // bottom of rocket centered at translated origin
     let cursor = totalH / 2;
     rocket.parts.forEach((pid, i) => {
+      if (sim.dropped && sim.dropped[i]) return;
       const p = Parts.byId(pid);
       if (!p) return;
-      const eng = sim.engines.find(e => e.id === pid);
+      const eng = sim.engines.find(e => e.idx === i);
       const isAlive = eng ? eng.alive : true;
       if (p.category === 'engine' && !isAlive) {
         ctx.globalAlpha = 0.5;
@@ -718,13 +1084,13 @@
       cursor -= p.height * STACK_SCALE;
     });
 
-    // fins on bottom-most body
+    // fins on bottom-most non-dropped body
     if (rocket.finId) {
       const fin = Parts.byId(rocket.finId);
-      // find bottom-most body's bottom y
       let yCursor = totalH / 2;
       let bodyBottom = null;
       for (let i = 0; i < rocket.parts.length; i++) {
+        if (sim.dropped && sim.dropped[i]) continue;
         const p = Parts.byId(rocket.parts[i]);
         if (!p) continue;
         if (p.category === 'body' && bodyBottom === null) bodyBottom = yCursor;
@@ -733,8 +1099,9 @@
       if (bodyBottom !== null) fin.sprite(ctx, 0, bodyBottom, STACK_SCALE, null);
     }
 
-    // nose cone
-    let topCursor = totalH / 2 - rocket.parts.reduce((sum, pid) => {
+    // nose cone — top of remaining stack
+    let topCursor = totalH / 2 - rocket.parts.reduce((sum, pid, i) => {
+      if (sim.dropped && sim.dropped[i]) return sum;
       const p = Parts.byId(pid); return sum + (p ? p.height : 0);
     }, 0) * STACK_SCALE;
     ctx.fillStyle = '#cc4444';
@@ -781,6 +1148,36 @@
       $('#hud-msg').style.opacity = Math.min(1, F.msgT);
     } else {
       $('#hud-msg').textContent = '';
+    }
+
+    // weather modifier label
+    const modEl = $('#hud-modifier');
+    if (s.modifier && s.modifier.id !== 'calm') {
+      modEl.textContent = '⚠ ' + s.modifier.label;
+      modEl.classList.remove('empty');
+    } else {
+      modEl.classList.add('empty');
+    }
+
+    // combo
+    const comboEl = $('#hud-combo');
+    if (s.combo > 0) {
+      comboEl.textContent = 'PILOT ×' + s.combo;
+      comboEl.classList.add('show');
+    } else {
+      comboEl.classList.remove('show');
+    }
+
+    // stage button enable/disable
+    const stageBtn = $('#touch-stage');
+    if (stageBtn) {
+      const can = canStage();
+      stageBtn.classList.toggle('disabled', !can);
+      const remaining = F.rocket.parts.filter((pid, i) => {
+        const p = Parts.byId(pid);
+        return p && p.category === 'fuel' && !s.dropped[i];
+      }).length;
+      stageBtn.textContent = 'STAGE' + (remaining > 1 ? ' (' + remaining + ')' : '');
     }
   }
 

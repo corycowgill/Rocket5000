@@ -439,6 +439,7 @@
     $('#stat-thrust').textContent = s.thrust.toFixed(0) + ' kN';
     $('#stat-twr').textContent = s.twr.toFixed(2);
     $('#stat-fuel').textContent = s.capacity + ' L';
+    $('#stat-stages').textContent = s.fuelCount;
     $('#stat-stab').textContent = s.stability + '%';
     $('#stat-jank').textContent = s.jank + '%';
     $('#rocket-name').textContent = State.rocket.name;
