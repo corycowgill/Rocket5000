@@ -219,14 +219,19 @@
 
   function initStars() {
     F.stars = [];
-    for (let i = 0; i < 80; i++) {
-      F.stars.push({
-        x: Math.random() * 2000 - 1000,
-        y: Math.random() * 4000,
-        depth: 0.2 + Math.random() * 0.8,
-        bright: Math.random(),
-      });
-    }
+    // 3 depth layers — distant tiny, mid, bright near
+    for (let i = 0; i < 60; i++) F.stars.push(makeStar(0.2));   // far
+    for (let i = 0; i < 40; i++) F.stars.push(makeStar(0.5));   // mid
+    for (let i = 0; i < 20; i++) F.stars.push(makeStar(0.9));   // near
+  }
+  function makeStar(depth) {
+    return {
+      x: Math.random() * 2400 - 1200,
+      y: Math.random() * 5000,
+      depth: depth + Math.random() * 0.1,
+      bright: Math.random(),
+      tint: Math.random(),
+    };
   }
 
   // ---- controls -------------------------------------------------------------
@@ -665,7 +670,22 @@
   function flashMsg(m) { F.msg = m; F.msgT = 1.6; }
 
   function spawnExplosion(x, y, scale) {
-    const n = Math.floor(20 * scale);
+    // shockwave ring (a few short-lived bright particles in a circle)
+    const ringN = Math.floor(18 * scale);
+    for (let i = 0; i < ringN; i++) {
+      const a = (i / ringN) * Math.PI * 2;
+      const sp = 18 + Math.random() * 4 * scale;
+      F.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 0.25,
+        color: '#ffffff',
+        size: 3,
+      });
+    }
+    // hot inner burst
+    const n = Math.floor(28 * scale);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 4 + Math.random() * 14 * scale;
@@ -674,8 +694,37 @@
         vx: Math.cos(a) * sp,
         vy: Math.sin(a) * sp,
         life: 0.5 + Math.random() * 0.8,
-        color: ['#ffcc33', '#ff5511', '#ff7733', '#ffffff'][i % 4],
+        color: ['#ffcc33', '#ff5511', '#ff7733', '#ffffff', '#ffaa22'][i % 5],
         size: 2 + Math.random() * 4,
+      });
+    }
+    // smoke cloud (lingers)
+    const smokeN = Math.floor(14 * scale);
+    for (let i = 0; i < smokeN; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 2 + Math.random() * 6;
+      F.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 1,
+        life: 1.4 + Math.random() * 0.8,
+        color: i % 3 === 0 ? '#444444' : '#777777',
+        size: 4 + Math.random() * 4,
+        smoke: true,
+      });
+    }
+    // chunky debris fragments
+    const debN = Math.floor(6 * scale);
+    for (let i = 0; i < debN; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 8 + Math.random() * 8;
+      F.particles.push({
+        x, y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 1.0 + Math.random() * 0.6,
+        color: ['#888', '#555', '#aaa'][i % 3],
+        size: 3 + Math.random() * 3,
       });
     }
   }
@@ -847,6 +896,17 @@
     ctx.save();
     ctx.translate(shakeX, shakeY);
 
+    // compute zoom up-front so any draw helper that wants ppm has it
+    const speed = Math.abs(s.vy);
+    const zoomT = Math.min(1, speed / 220);
+    const ppm = PIXEL_PER_M_BASE - (PIXEL_PER_M_BASE - PIXEL_PER_M_MIN) * zoomT;
+    s.lastPpm = ppm;
+    const worldToScreen = (wx, wy) => {
+      const sx = W / 2 + (wx - s.x) * ppm;
+      const sy = H * 0.65 - (wy - s.y) * ppm;
+      return [sx, sy];
+    };
+
     // sky color stops
     const sky = skyGradient(ctx, W, H, altFt);
     ctx.fillStyle = sky;
@@ -866,17 +926,6 @@
 
     // ground horizon (visible while low)
     if (altFt < 30000) drawHorizon(ctx, W, H, altFt, s.x);
-
-    // world-space helpers — zoom out as we accelerate so motion reads
-    const speed = Math.abs(s.vy);
-    const zoomT = Math.min(1, speed / 220);
-    const ppm = PIXEL_PER_M_BASE - (PIXEL_PER_M_BASE - PIXEL_PER_M_MIN) * zoomT;
-    s.lastPpm = ppm;
-    const worldToScreen = (wx, wy) => {
-      const sx = W / 2 + (wx - s.x) * ppm;
-      const sy = H * 0.65 - (wy - s.y) * ppm;
-      return [sx, sy];
-    };
 
     // speed streaks — overlay above sky, below world objects
     drawSpeedStreaks(ctx, W, H, s);
@@ -912,13 +961,9 @@
     const [rx, ry] = worldToScreen(s.x, s.y);
     drawRocket(ctx, rx, ry, s);
 
-    // launchpad (when low)
-    if (altFt < 600) {
-      const [px, py] = worldToScreen(0, 0);
-      ctx.fillStyle = '#666';
-      ctx.fillRect(px - 60, py + 10, 120, 4);
-      ctx.fillStyle = '#3a2614';
-      ctx.fillRect(0, py + 14, W, H - (py + 14));
+    // launch gantry + pad (visible while low)
+    if (altFt < 1200) {
+      drawGantry(ctx, W, H, altFt, worldToScreen);
     }
 
     // altitude tick marks on the right edge
@@ -933,6 +978,90 @@
       ctx.globalAlpha = a;
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawGantry(ctx, W, H, altFt, worldToScreen) {
+    const [padX, padY] = worldToScreen(0, 0);
+    if (padY < 0 || padY > H + 200) return;
+    // earth/soil under the pad fills the bottom of screen
+    ctx.fillStyle = '#3a2614';
+    ctx.fillRect(0, padY + 14, W, H - (padY + 14));
+    ctx.fillStyle = '#5a3820';
+    ctx.fillRect(0, padY + 14, W, 3);
+    // grass tufts
+    ctx.fillStyle = '#1f5d22';
+    for (let i = 0; i < W; i += 14) {
+      const h = 2 + ((i * 7) % 5);
+      ctx.fillRect(i, padY + 14 - h, 2, h);
+    }
+
+    // concrete pad
+    ctx.fillStyle = '#888';
+    ctx.fillRect(padX - 90, padY + 10, 180, 6);
+    ctx.fillStyle = '#666';
+    ctx.fillRect(padX - 90, padY + 16, 180, 2);
+    // scorch marks
+    ctx.fillStyle = '#1f1612';
+    ctx.fillRect(padX - 30, padY + 12, 60, 3);
+    // pad bolts
+    ctx.fillStyle = '#222';
+    for (let i = -3; i <= 3; i++) ctx.fillRect(padX + i * 24 - 1, padY + 11, 2, 2);
+
+    // gantry tower (steel scaffold) — only while still on/near pad
+    if (altFt < 800) {
+      const towerH = 160;
+      const towerX = padX + 60;
+      const fade = Math.max(0, 1 - altFt / 800);
+      ctx.globalAlpha = 0.35 + fade * 0.65;
+      // vertical members
+      ctx.fillStyle = '#bb6622';
+      ctx.fillRect(towerX, padY - towerH, 4, towerH + 14);
+      ctx.fillRect(towerX + 24, padY - towerH, 4, towerH + 14);
+      // horizontal cross-braces
+      for (let i = 0; i <= 6; i++) {
+        const yy = padY - (i * (towerH / 6));
+        ctx.fillRect(towerX, yy, 28, 2);
+        // diagonal brace
+        ctx.fillStyle = '#883311';
+        for (let k = 0; k < 12; k++) {
+          ctx.fillRect(towerX + k * 2, yy - k - 2, 2, 1);
+        }
+        ctx.fillStyle = '#bb6622';
+      }
+      // service arm (bridge to rocket)
+      const armY = padY - towerH * 0.6;
+      ctx.fillRect(padX + 14, armY, 50, 3);
+      ctx.fillRect(padX + 14, armY - 6, 4, 6);
+      // antenna on top
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(towerX + 12, padY - towerH - 14, 2, 14);
+      ctx.fillStyle = '#cc2222';
+      ctx.fillRect(towerX + 11, padY - towerH - 16, 4, 3);
+      ctx.globalAlpha = 1;
+    }
+
+    // billowing launch smoke at the base while low and burning
+    if (F.sim.throttle > 0.2 && altFt < 400) {
+      const t = F.sim.time;
+      ctx.fillStyle = 'rgba(220,220,220,0.45)';
+      for (let i = 0; i < 6; i++) {
+        const cx = padX + Math.sin(t * 1.2 + i) * 30 + i * 20 - 60;
+        const r = 16 + Math.sin(t * 2 + i) * 4;
+        ctx.fillRect(cx - r / 2, padY + 4 - r / 2, r, r);
+      }
+    }
+
+    // pad sign
+    if (altFt < 200) {
+      ctx.fillStyle = '#ffcc33';
+      ctx.fillRect(padX - 100, padY - 4, 18, 8);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(padX - 99, padY - 3, 16, 1);
+      ctx.fillRect(padX - 99, padY + 2, 16, 1);
+      ctx.fillRect(padX - 96, padY - 1, 1, 3);
+      ctx.fillRect(padX - 92, padY - 1, 2, 3);
+      ctx.fillRect(padX - 88, padY - 1, 1, 3);
     }
   }
 
@@ -995,12 +1124,26 @@
   function drawStars(ctx, W, H, alpha, s) {
     ctx.globalAlpha = alpha;
     F.stars.forEach(st => {
-      // parallax: stars move slower than rocket
-      const sx = (st.x - s.x * st.depth * 0.02 + 1000) % W;
-      const sy = (st.y - s.y * st.depth * 0.02 + 4000) % H;
-      const tw = (Math.sin((s.time + st.bright * 5) * 3) + 1) * 0.5;
-      ctx.fillStyle = 'rgba(255,255,255,' + (0.4 + tw * 0.6) + ')';
-      ctx.fillRect(sx, sy, st.bright > 0.7 ? 2 : 1, st.bright > 0.7 ? 2 : 1);
+      const sx = (st.x - s.x * st.depth * 0.04 + 1000) % W;
+      const sy = (st.y - s.y * st.depth * 0.04 + 5000) % H;
+      const tw = (Math.sin((s.time * 1.4 + st.bright * 5)) + 1) * 0.5;
+      // tint: slight blue/yellow/white variation
+      let r = 255, g = 255, b = 255;
+      if (st.tint < 0.25)      { r = 255; g = 240; b = 200; }   // warm
+      else if (st.tint < 0.45) { r = 200; g = 220; b = 255; }   // cool
+      // brightness from depth
+      const bright = (0.35 + st.depth * 0.4 + tw * 0.3) * st.bright;
+      ctx.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + bright + ')';
+      // size by depth (near stars are 2x2, far are 1x1)
+      const sz = st.depth > 0.7 ? 2 : 1;
+      ctx.fillRect(sx | 0, sy | 0, sz, sz);
+      // 4-point sparkle on the brightest near stars
+      if (st.depth > 0.85 && st.bright > 0.7 && tw > 0.6) {
+        ctx.fillRect((sx | 0) - 1, sy | 0, 1, 1);
+        ctx.fillRect((sx | 0) + 2, sy | 0, 1, 1);
+        ctx.fillRect(sx | 0, (sy | 0) - 1, 1, 1);
+        ctx.fillRect(sx | 0, (sy | 0) + 2, 1, 1);
+      }
     });
     ctx.globalAlpha = 1;
   }
