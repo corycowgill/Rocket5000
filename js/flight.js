@@ -186,6 +186,9 @@
       flash: 0,
       flashColor: '#ffffff',
       shake: 0,
+      rumble: 0,
+      contrailT: 0,
+      launchShockwaveDone: false,
     };
   }
 
@@ -339,7 +342,7 @@
     // visual: spawn debris flying away from rocket bottom
     spawnStageDebris(s, droppedNow);
     spawnExplosion(s.x + ax * 1, s.y + ay * 1, 0.7);
-    s.shake = Math.max(s.shake, 0.4);
+    s.shake = Math.max(s.shake || 0, 0.4);
     s.stageCount++;
     flashMsg('STAGE ' + s.stageCount + ' DROP');
     Sfx.play('explosion');
@@ -514,8 +517,10 @@
 
     if (s.fuel <= 0) s.throttle = 0;
 
-    // mass (decreases with fuel)
-    const mass = s.dryMass + (s.fuel / s.maxFuel) * s.fuelMass;
+    // mass (decreases with fuel) — guard divide-by-zero after staging the
+    // last fuel tank: when capacity hits 0 there's no fuel mass to add.
+    const fuelFraction = s.maxFuel > 0 ? (s.fuel / s.maxFuel) : 0;
+    const mass = Math.max(0.01, s.dryMass + fuelFraction * s.fuelMass);
 
     // accelerations
     const aThrustMag = (liveThrust * THRUST_GAIN / mass) * s.throttle * (s.fuel > 0 ? 1 : 0);
@@ -580,7 +585,7 @@
         flashMsg(m.label + '  +' + m.bonus);
         s.flash = 0.6;
         s.flashColor = m.ft >= 1000000 ? '#88ff88' : (m.ft >= 100000 ? '#ffcc33' : '#ffffff');
-        s.shake = Math.max(s.shake, 0.25);
+        s.shake = Math.max(s.shake || 0, 0.25);
         Sfx.play('snap');
       }
     });
@@ -880,7 +885,7 @@
           // any hit resets combo
           s.combo = 0;
           flashMsg(h.type.toUpperCase() + ' STRIKE');
-          s.shake = Math.max(s.shake, 0.5);
+          s.shake = Math.max(s.shake || 0, 0.5);
           s.flash = Math.max(s.flash || 0, 0.5);
           s.flashColor = '#ff5577';
         }

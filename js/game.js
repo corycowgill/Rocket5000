@@ -186,10 +186,11 @@
   }
 
   const UNLOCK_TIERS = [
-    { altitude: 1000,    parts: ['firework_booster', 'pressure_cooker', 'soup_can', 'beer_keg', 'plywood_fin'] },
+    { altitude: 1000,    parts: ['firework_booster', 'pressure_cooker', 'lawnmower', 'soup_can', 'beer_keg', 'plywood_fin', 'stop_sign_fin'] },
     { altitude: 5000,    parts: ['leaf_blower', 'magnetron', 'propane_tank', 'shopping_cart', 'filing_cabinet'] },
     { altitude: 20000,   parts: ['steel_fin'] },
-    { altitude: 100000,  parts: ['nuclear_core'] },
+    { altitude: 100000,  parts: ['nuclear_core', 'industrial_drum'] },
+    { altitude: 200000,  parts: ['salvaged_motor', 'fridge', 'aerospace_fin'] },
   ];
 
   function checkUnlocks(state) {

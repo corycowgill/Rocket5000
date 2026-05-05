@@ -12,7 +12,7 @@
     bestAltitude: 0,
     totalLaunches: 0,
     successfulMoonshots: 0,
-    unlocked: ['soda_bottle', 'duct_tape', 'lawn_chair', 'trash_can', 'cardboard_fin'],
+    unlocked: ['hairdryer', 'duct_tape', 'hairspray_cluster', 'soda_bottle', 'lawn_chair', 'trash_can', 'wheelbarrow', 'pizza_box_fin', 'cardboard_fin'],
     lastBuild: null,
     seenChallengeId: null,
     completedChallenges: [],

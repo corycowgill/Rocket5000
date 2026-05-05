@@ -759,6 +759,408 @@
     rivet(ctx, X + 18 * s, Y + 13 * s, s);
   }
 
+  // ==========================================================
+  // BATCH 3 — even more parts
+  // ==========================================================
+
+  function drawHairdryer(ctx, cx, by, s, frame) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // barrel (where heat comes out — points down)
+    cyl(ctx, X + 8 * s,  Y + 4 * s,  16 * s, 14 * s, '#ff66aa', '#ff99cc', '#992244', '#440011');
+    // brand label band
+    rect(ctx, X + 9 * s, Y + 9 * s, 14 * s, 3 * s, '#ffffff', '#992244');
+    px(ctx, X + 11 * s, Y + 10 * s, 1 * s, 1 * s, '#ff66aa');
+    px(ctx, X + 13 * s, Y + 10 * s, 1 * s, 1 * s, '#ff66aa');
+    px(ctx, X + 15 * s, Y + 10 * s, 1 * s, 1 * s, '#ff66aa');
+    px(ctx, X + 17 * s, Y + 10 * s, 1 * s, 1 * s, '#ff66aa');
+    px(ctx, X + 19 * s, Y + 10 * s, 1 * s, 1 * s, '#ff66aa');
+    // heating coils visible inside the barrel mouth
+    const hot = frame && frame.thrusting;
+    rect(ctx, X + 10 * s, Y + 14 * s, 12 * s, 4 * s, hot ? '#ff5500' : '#444', '#222');
+    if (hot) {
+      px(ctx, X + 11 * s, Y + 15 * s, 10 * s, 1 * s, '#ffaa44');
+      px(ctx, X + 11 * s, Y + 17 * s, 10 * s, 1 * s, '#ffaa44');
+    } else {
+      px(ctx, X + 11 * s, Y + 15 * s, 10 * s, 1 * s, '#666');
+      px(ctx, X + 11 * s, Y + 17 * s, 10 * s, 1 * s, '#666');
+    }
+    // air vents on the back
+    rect(ctx, X + 8 * s, Y + 0, 16 * s, 4 * s, '#cc4488', '#440011');
+    for (let i = 0; i < 7; i++) px(ctx, X + (9 + i * 2) * s, Y + 1 * s, 1 * s, 2 * s, '#220011');
+    // pistol grip handle
+    rect(ctx, X + 12 * s, Y + 18 * s, 8 * s, 10 * s, '#ff66aa', '#440011');
+    px(ctx, X + 13 * s, Y + 19 * s, 1 * s, 8 * s, '#ff99cc');
+    // trigger
+    rect(ctx, X + 11 * s, Y + 20 * s, 2 * s, 4 * s, '#222', '#000');
+    // cool/hot/off slider switch
+    rect(ctx, X + 14 * s, Y + 22 * s, 4 * s, 2 * s, '#ddd', '#222');
+    px(ctx, X + 16 * s, Y + 22 * s, 1 * s, 2 * s, '#cc0000');
+    // power cord coiled at handle
+    px(ctx, X + 16 * s, Y + 28 * s, 1 * s, 4 * s, '#222');
+    px(ctx, X + 17 * s, Y + 31 * s, 3 * s, 1 * s, '#222');
+    if (hot) {
+      flame(ctx, X + 16 * s, Y + 18 * s, 10 * s, 8 * s, frame.t,
+            ['#ff5511', '#ffaa44', '#ffeeaa']);
+    }
+  }
+
+  function drawLawnmower(ctx, cx, by, s, frame) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // boxy engine block
+    rect(ctx, X + 4 * s,  Y + 4 * s,  24 * s, 16 * s, '#3a6b3a', '#1a3a1a');
+    px(ctx, X + 5 * s, Y + 5 * s, 22 * s, 1 * s, '#5a8b5a');
+    // top edge / cooling fins
+    for (let i = 0; i < 5; i++) px(ctx, X + (6 + i * 4) * s, Y + 6 * s, 2 * s, 1 * s, '#2a4b2a');
+    // BRIGGS-style brand band
+    rect(ctx, X + 6 * s, Y + 9 * s, 20 * s, 4 * s, '#ffcc33', '#664400');
+    brandRow(ctx, X + 8 * s, Y + 10 * s, s, '#3a6b3a');
+    // pull cord with grip
+    px(ctx, X + 26 * s, Y + 7 * s, 1 * s, 5 * s, '#222');
+    rect(ctx, X + 27 * s, Y + 7 * s, 3 * s, 3 * s, '#cc3333', '#552211');
+    px(ctx, X + 28 * s, Y + 8 * s, 1 * s, 1 * s, '#ee5544');
+    // gas cap
+    rect(ctx, X + 22 * s, Y + 4 * s, 4 * s, 2 * s, '#222', '#000');
+    px(ctx, X + 23 * s, Y + 4 * s, 2 * s, 1 * s, '#444');
+    // spark plug stub on top
+    rect(ctx, X + 8 * s, Y + 2 * s, 2 * s, 3 * s, '#888', '#222');
+    px(ctx, X + 8 * s, Y + 2 * s, 2 * s, 1 * s, '#ccc');
+    // muffler / smokestack on the side
+    cyl(ctx, X + 28 * s, Y + 14 * s, 4 * s, 8 * s, '#444', '#666', '#222', '#000');
+    // smoke if running
+    if (frame && frame.thrusting) {
+      const w = (frame.t % 6 < 3) ? 0 : 1;
+      px(ctx, X + (29 + w) * s, Y + 11 * s, 2 * s, 2 * s, 'rgba(120,120,120,0.7)');
+      px(ctx, X + (28 + w) * s, Y + 8 * s, 3 * s, 2 * s, 'rgba(140,140,140,0.5)');
+    }
+    // visible bolts on the block
+    rivet(ctx, X + 5 * s, Y + 17 * s, s);
+    rivet(ctx, X + 26 * s, Y + 17 * s, s);
+    rivet(ctx, X + 5 * s, Y + 6 * s, s);
+    // exhaust manifold + nozzle
+    rect(ctx, X + 8 * s,  Y + 20 * s, 16 * s, 4 * s, '#666', '#222');
+    rect(ctx, X + 10 * s, Y + 24 * s, 12 * s, 4 * s, '#888', '#222');
+    px(ctx, X + 11 * s, Y + 25 * s, 10 * s, 1 * s, '#bbb');
+    rect(ctx, X + 12 * s, Y + 28 * s, 8 * s, 2 * s, '#222', '#000');
+    if (frame && frame.thrusting) {
+      flame(ctx, X + 16 * s, Y + 30 * s, 12 * s, 12 * s, frame.t,
+            ['#aa4422', '#ff8833', '#ffeeaa']);
+    }
+  }
+
+  function drawSalvagedMotor(ctx, cx, by, s, frame) {
+    const X = cx - 16 * s, Y = by - 36 * s;
+    // turbopump assembly at top
+    cyl(ctx, X + 10 * s, Y + 0,        12 * s, 4 * s, '#aaaabb', '#ccccdd', '#555566', '#0a0a14');
+    // fuel + oxidizer feed lines
+    px(ctx, X + 6 * s,  Y + 1 * s, 4 * s, 2 * s, '#cc3333');  // red fuel line
+    px(ctx, X + 22 * s, Y + 1 * s, 4 * s, 2 * s, '#3366cc');  // blue ox line
+    // turbopump bolts
+    rivet(ctx, X + 11 * s, Y + 1 * s, s);
+    rivet(ctx, X + 14 * s, Y + 1 * s, s);
+    rivet(ctx, X + 17 * s, Y + 1 * s, s);
+    rivet(ctx, X + 20 * s, Y + 1 * s, s);
+    // injector dome
+    rect(ctx, X + 8 * s,  Y + 4 * s, 16 * s, 4 * s, '#888', '#222');
+    px(ctx, X + 9 * s, Y + 5 * s, 14 * s, 1 * s, '#bbb');
+    // combustion chamber (proper cylindrical)
+    cyl(ctx, X + 9 * s,  Y + 8 * s, 14 * s, 8 * s, '#666', '#888', '#333', '#0a0a14');
+    // heat-shielded panels
+    px(ctx, X + 10 * s, Y + 9 * s, 1 * s, 6 * s, '#aaa');
+    px(ctx, X + 21 * s, Y + 9 * s, 1 * s, 6 * s, '#aaa');
+    // serial / "PROPERTY OF" stencil
+    px(ctx, X + 11 * s, Y + 11 * s, 2 * s, 1 * s, '#222');
+    px(ctx, X + 14 * s, Y + 11 * s, 2 * s, 1 * s, '#222');
+    px(ctx, X + 17 * s, Y + 11 * s, 2 * s, 1 * s, '#222');
+    px(ctx, X + 20 * s, Y + 11 * s, 1 * s, 1 * s, '#222');
+    // expansion nozzle (proper bell shape — wider toward bottom)
+    rect(ctx, X + 9 * s,  Y + 16 * s, 14 * s, 2 * s, '#888', '#222');
+    rect(ctx, X + 8 * s,  Y + 18 * s, 16 * s, 2 * s, '#999', '#222');
+    rect(ctx, X + 7 * s,  Y + 20 * s, 18 * s, 2 * s, '#aaa', '#222');
+    rect(ctx, X + 6 * s,  Y + 22 * s, 20 * s, 2 * s, '#aaa', '#222');
+    rect(ctx, X + 5 * s,  Y + 24 * s, 22 * s, 8 * s, '#bbb', '#222');
+    // bell rib lines
+    px(ctx, X + 5 * s, Y + 26 * s, 22 * s, 1 * s, '#999');
+    px(ctx, X + 5 * s, Y + 28 * s, 22 * s, 1 * s, '#888');
+    px(ctx, X + 5 * s, Y + 30 * s, 22 * s, 1 * s, '#777');
+    // metallic vertical highlight on the bell
+    px(ctx, X + 6 * s, Y + 25 * s, 1 * s, 7 * s, '#ddd');
+    // hot inside the bell when burning
+    if (frame && frame.thrusting) {
+      px(ctx, X + 8 * s, Y + 30 * s, 16 * s, 2 * s, '#ff7733');
+      px(ctx, X + 10 * s, Y + 28 * s, 12 * s, 2 * s, '#ffaa44');
+      flame(ctx, X + 16 * s, Y + 32 * s, 18 * s, 18 * s, frame.t,
+            ['#ff5511', '#ffcc33', '#ffffff']);
+    } else {
+      px(ctx, X + 8 * s, Y + 30 * s, 16 * s, 2 * s, '#222');
+    }
+    // bell rim
+    rect(ctx, X + 5 * s, Y + 32 * s, 22 * s, 1 * s, '#444', null);
+  }
+
+  function drawHairsprayCluster(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // 6 small aerosol cans arranged in a 3x2 grid, wired together
+    const cols = [
+      { x: X + 4 * s,  c1: '#cc3399', c2: '#882266' },  // pink
+      { x: X + 13 * s, c1: '#ffcc33', c2: '#996600' },  // gold
+      { x: X + 22 * s, c1: '#3399cc', c2: '#226688' },  // blue
+    ];
+    // top row
+    cols.forEach(col => {
+      // spray nozzle
+      rect(ctx, col.x + 2 * s, Y + 0, 2 * s, 2 * s, '#222', null);
+      px(ctx, col.x + 2 * s, Y + 1 * s, 2 * s, 1 * s, '#444');
+      // cap
+      rect(ctx, col.x, Y + 2 * s, 6 * s, 2 * s, '#888', '#222');
+      // body
+      cyl(ctx, col.x, Y + 4 * s, 6 * s, 10 * s, col.c1, '#ffffff', col.c2, '#222');
+      // brand band
+      rect(ctx, col.x, Y + 7 * s, 6 * s, 2 * s, '#ffffff', col.c2);
+      px(ctx, col.x + 1 * s, Y + 7 * s, 4 * s, 1 * s, col.c1);
+      // bottom
+      rect(ctx, col.x, Y + 14 * s, 6 * s, 1 * s, col.c2, null);
+    });
+    // bottom row
+    cols.forEach(col => {
+      rect(ctx, col.x + 2 * s, Y + 16 * s, 2 * s, 2 * s, '#222', null);
+      rect(ctx, col.x, Y + 18 * s, 6 * s, 2 * s, '#888', '#222');
+      cyl(ctx, col.x, Y + 20 * s, 6 * s, 10 * s, col.c1, '#ffffff', col.c2, '#222');
+      rect(ctx, col.x, Y + 23 * s, 6 * s, 2 * s, '#ffffff', col.c2);
+      px(ctx, col.x + 1 * s, Y + 23 * s, 4 * s, 1 * s, col.c1);
+      rect(ctx, col.x, Y + 30 * s, 6 * s, 1 * s, col.c2, null);
+    });
+    // wires zigzagging between cans
+    px(ctx, X + 10 * s, Y + 5 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 19 * s, Y + 5 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 10 * s, Y + 21 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 19 * s, Y + 21 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 10 * s, Y + 12 * s, 1 * s, 8 * s, '#222');
+    px(ctx, X + 19 * s, Y + 12 * s, 1 * s, 8 * s, '#222');
+    // duct tape strip across the middle
+    rect(ctx, X + 4 * s, Y + 14 * s, 24 * s, 2 * s, '#aaa', '#222');
+    px(ctx, X + 5 * s, Y + 14 * s, 22 * s, 1 * s, '#ccc');
+  }
+
+  function drawIndustrialDrum(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 38 * s;
+    // top rim with bung holes
+    rect(ctx, X + 4 * s,  Y + 1 * s, 24 * s, 3 * s, '#999', '#222');
+    px(ctx, X + 5 * s, Y + 2 * s, 22 * s, 1 * s, '#bbb');
+    rect(ctx, X + 9 * s, Y + 0, 4 * s, 1 * s, '#222', null);  // bung
+    rect(ctx, X + 19 * s, Y + 0, 4 * s, 1 * s, '#222', null); // bung
+    // body — industrial yellow drum
+    cyl(ctx, X + 4 * s,  Y + 4 * s, 24 * s, 28 * s, '#e8b820', '#ffd644', '#aa8800', '#553300');
+    // top hoop band
+    rect(ctx, X + 4 * s, Y + 8 * s, 24 * s, 2 * s, '#aa8800', '#553300');
+    // middle hoop band
+    rect(ctx, X + 4 * s, Y + 18 * s, 24 * s, 2 * s, '#aa8800', '#553300');
+    // bottom hoop band
+    rect(ctx, X + 4 * s, Y + 28 * s, 24 * s, 2 * s, '#aa8800', '#553300');
+    // hazard warning placard
+    rect(ctx, X + 7 * s, Y + 11 * s, 9 * s, 6 * s, '#ffffff', '#222');
+    // diamond shape with skull-like dots
+    px(ctx, X + 11 * s, Y + 12 * s, 1 * s, 4 * s, '#222');
+    px(ctx, X + 9 * s, Y + 14 * s, 5 * s, 1 * s, '#222');
+    px(ctx, X + 10 * s, Y + 13 * s, 3 * s, 1 * s, '#cc3333');
+    // brand text band
+    rect(ctx, X + 17 * s, Y + 11 * s, 9 * s, 6 * s, '#cc3333', '#552211');
+    brandRow(ctx, X + 18 * s, Y + 13 * s, s, '#ffeecc');
+    // serial / batch number
+    px(ctx, X + 7 * s, Y + 22 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 9 * s, Y + 22 * s, 2 * s, 2 * s, '#222');
+    px(ctx, X + 12 * s, Y + 22 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 14 * s, Y + 22 * s, 2 * s, 2 * s, '#222');
+    px(ctx, X + 17 * s, Y + 22 * s, 2 * s, 2 * s, '#222');
+    // dent
+    px(ctx, X + 22 * s, Y + 24 * s, 3 * s, 2 * s, '#aa8800');
+    // bottom rim
+    rect(ctx, X + 4 * s, Y + 32 * s, 24 * s, 4 * s, '#999', '#222');
+    px(ctx, X + 5 * s, Y + 33 * s, 22 * s, 1 * s, '#bbb');
+    px(ctx, X + 5 * s, Y + 35 * s, 22 * s, 1 * s, '#444');
+    // vertical highlight
+    px(ctx, X + 5 * s, Y + 5 * s, 1 * s, 26 * s, '#ffd644');
+  }
+
+  function drawWheelbarrow(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 28 * s;
+    // tray bed (orange/red plastic)
+    rect(ctx, X + 4 * s,  Y + 4 * s,  24 * s, 14 * s, '#cc3333', '#552211');
+    // tray rim
+    rect(ctx, X + 3 * s,  Y + 3 * s,  26 * s, 2 * s, '#ee5544', '#552211');
+    px(ctx, X + 4 * s, Y + 4 * s, 24 * s, 1 * s, '#dd4444');
+    // rivets along the rim
+    rivet(ctx, X + 5 * s, Y + 5 * s, s);
+    rivet(ctx, X + 14 * s, Y + 5 * s, s);
+    rivet(ctx, X + 23 * s, Y + 5 * s, s);
+    // dirt/cargo inside (mound)
+    rect(ctx, X + 8 * s,  Y + 9 * s, 16 * s, 5 * s, '#5a3820', '#3a2614');
+    px(ctx, X + 10 * s, Y + 9 * s, 12 * s, 1 * s, '#7a4830');
+    // handle bars (wood)
+    rect(ctx, X + 24 * s, Y + 10 * s, 6 * s, 2 * s, '#aa7744', '#553311');
+    px(ctx, X + 25 * s, Y + 10 * s, 5 * s, 1 * s, '#cc9966');
+    rect(ctx, X + 24 * s, Y + 16 * s, 6 * s, 2 * s, '#aa7744', '#553311');
+    px(ctx, X + 25 * s, Y + 16 * s, 5 * s, 1 * s, '#cc9966');
+    // single wheel in front
+    cyl(ctx, X + 1 * s,  Y + 16 * s, 8 * s, 8 * s, '#222', '#444', '#000', '#000');
+    px(ctx, X + 3 * s, Y + 18 * s, 4 * s, 4 * s, '#888');
+    px(ctx, X + 4 * s, Y + 19 * s, 2 * s, 2 * s, '#ccc');
+    // axle support / fork
+    rect(ctx, X + 6 * s,  Y + 14 * s, 6 * s, 2 * s, '#666', '#222');
+    rect(ctx, X + 8 * s,  Y + 16 * s, 2 * s, 4 * s, '#666', '#222');
+    // legs (rear support)
+    rect(ctx, X + 22 * s, Y + 18 * s, 2 * s, 8 * s, '#888', '#444');
+    rect(ctx, X + 8 * s,  Y + 22 * s, 2 * s, 4 * s, '#888', '#444');
+  }
+
+  function drawFridge(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 38 * s;
+    // top vent grille
+    rect(ctx, X + 4 * s,  Y + 0, 24 * s, 2 * s, '#999', '#222');
+    for (let i = 0; i < 7; i++) px(ctx, X + (5 + i * 3) * s, Y + 0, 2 * s, 1 * s, '#666');
+    // body — white kitchen appliance
+    rect(ctx, X + 4 * s,  Y + 2 * s, 24 * s, 34 * s, '#f0f0f0', '#888');
+    px(ctx, X + 5 * s, Y + 3 * s, 22 * s, 1 * s, '#ffffff');
+    // freezer door (top section)
+    rect(ctx, X + 5 * s,  Y + 4 * s, 22 * s, 10 * s, '#e8e8e8', '#888');
+    px(ctx, X + 5 * s, Y + 14 * s, 22 * s, 1 * s, '#bbb');
+    // freezer handle
+    rect(ctx, X + 22 * s, Y + 7 * s, 4 * s, 4 * s, '#aaaaaa', '#444');
+    px(ctx, X + 23 * s, Y + 7 * s, 2 * s, 1 * s, '#ddd');
+    // main fridge door (bottom section)
+    rect(ctx, X + 5 * s,  Y + 15 * s, 22 * s, 19 * s, '#e8e8e8', '#888');
+    // big handle
+    rect(ctx, X + 22 * s, Y + 17 * s, 4 * s, 14 * s, '#aaaaaa', '#444');
+    px(ctx, X + 23 * s, Y + 17 * s, 2 * s, 1 * s, '#ddd');
+    // door hinges (left side)
+    rect(ctx, X + 4 * s, Y + 6 * s, 2 * s, 3 * s, '#666', '#222');
+    rect(ctx, X + 4 * s, Y + 18 * s, 2 * s, 3 * s, '#666', '#222');
+    rect(ctx, X + 4 * s, Y + 28 * s, 2 * s, 3 * s, '#666', '#222');
+    // brand badge
+    rect(ctx, X + 11 * s, Y + 18 * s, 8 * s, 3 * s, '#222', null);
+    brandRow(ctx, X + 11 * s, Y + 19 * s, s * 0.5, '#cccccc');
+    // refrigerator magnets / stickers (chaos)
+    px(ctx, X + 8 * s, Y + 6 * s, 3 * s, 2 * s, '#ffcc33');  // smiley magnet
+    px(ctx, X + 9 * s, Y + 7 * s, 1 * s, 1 * s, '#222');
+    px(ctx, X + 13 * s, Y + 24 * s, 4 * s, 3 * s, '#cc3333'); // photo
+    px(ctx, X + 14 * s, Y + 25 * s, 2 * s, 1 * s, '#ffeecc');
+    // power indicator LED
+    px(ctx, X + 7 * s, Y + 5 * s, 1 * s, 1 * s, '#88ff88');
+    // bottom kickplate
+    rect(ctx, X + 4 * s,  Y + 36 * s, 24 * s, 2 * s, '#666', '#222');
+  }
+
+  function drawPizzaBoxFin(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 14 * s;
+    // left fin (square pizza box piece)
+    rect(ctx, X + 0 * s,   Y + 4 * s,  10 * s, 10 * s, '#cc9966', '#553311');
+    // box flap fold line
+    px(ctx, X + 0 * s, Y + 8 * s, 10 * s, 1 * s, '#996644');
+    // grease stain
+    px(ctx, X + 4 * s, Y + 9 * s, 3 * s, 2 * s, '#aa7744');
+    // pizza brand stripe (red)
+    rect(ctx, X + 0 * s, Y + 5 * s, 10 * s, 2 * s, '#cc3333', '#552211');
+    px(ctx, X + 0 * s, Y + 5 * s, 10 * s, 1 * s, '#ee5544');
+    // pizza brand letters
+    px(ctx, X + 1 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 3 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 5 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 7 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    // edge highlight
+    px(ctx, X + 0 * s, Y + 4 * s, 10 * s, 1 * s, '#eebb88');
+    // right fin (mirror)
+    rect(ctx, X + 22 * s,  Y + 4 * s,  10 * s, 10 * s, '#cc9966', '#553311');
+    px(ctx, X + 22 * s, Y + 8 * s, 10 * s, 1 * s, '#996644');
+    px(ctx, X + 26 * s, Y + 9 * s, 3 * s, 2 * s, '#aa7744');
+    rect(ctx, X + 22 * s, Y + 5 * s, 10 * s, 2 * s, '#cc3333', '#552211');
+    px(ctx, X + 22 * s, Y + 5 * s, 10 * s, 1 * s, '#ee5544');
+    px(ctx, X + 24 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 26 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 28 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 30 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 22 * s, Y + 4 * s, 10 * s, 1 * s, '#eebb88');
+    // duct tape attaching the fins
+    px(ctx, X + 10 * s, Y + 6 * s, 2 * s, 6 * s, '#aaaaaa');
+    px(ctx, X + 20 * s, Y + 6 * s, 2 * s, 6 * s, '#aaaaaa');
+    // center connector
+    rect(ctx, X + 12 * s, Y + 8 * s, 8 * s, 6 * s, '#777', '#222');
+  }
+
+  function drawStopSignFin(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 16 * s;
+    // octagonal red stop sign on each side
+    // left fin
+    rect(ctx, X + 1 * s,  Y + 4 * s, 8 * s, 8 * s, '#cc1122', '#440011');
+    // octagon corners (clip 4 corner pixels for octagon shape)
+    px(ctx, X + 1 * s, Y + 4 * s, 1 * s, 1 * s, '#553344');  // dark sky behind corner
+    px(ctx, X + 8 * s, Y + 4 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 1 * s, Y + 11 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 8 * s, Y + 11 * s, 1 * s, 1 * s, '#553344');
+    // top edge highlight
+    px(ctx, X + 2 * s, Y + 4 * s, 6 * s, 1 * s, '#ee3344');
+    // STOP letters (white on red)
+    px(ctx, X + 3 * s, Y + 7 * s, 1 * s, 2 * s, '#fff');
+    px(ctx, X + 4 * s, Y + 7 * s, 1 * s, 1 * s, '#fff');
+    px(ctx, X + 5 * s, Y + 8 * s, 1 * s, 1 * s, '#fff');
+    px(ctx, X + 6 * s, Y + 7 * s, 1 * s, 2 * s, '#fff');
+    // pole stub
+    rect(ctx, X + 4 * s, Y + 12 * s, 2 * s, 4 * s, '#888', '#222');
+    // right fin (mirror)
+    rect(ctx, X + 23 * s, Y + 4 * s, 8 * s, 8 * s, '#cc1122', '#440011');
+    px(ctx, X + 23 * s, Y + 4 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 30 * s, Y + 4 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 23 * s, Y + 11 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 30 * s, Y + 11 * s, 1 * s, 1 * s, '#553344');
+    px(ctx, X + 24 * s, Y + 4 * s, 6 * s, 1 * s, '#ee3344');
+    px(ctx, X + 25 * s, Y + 7 * s, 1 * s, 2 * s, '#fff');
+    px(ctx, X + 26 * s, Y + 7 * s, 1 * s, 1 * s, '#fff');
+    px(ctx, X + 27 * s, Y + 8 * s, 1 * s, 1 * s, '#fff');
+    px(ctx, X + 28 * s, Y + 7 * s, 1 * s, 2 * s, '#fff');
+    rect(ctx, X + 26 * s, Y + 12 * s, 2 * s, 4 * s, '#888', '#222');
+    // center connector
+    cyl(ctx, X + 12 * s, Y + 8 * s, 8 * s, 8 * s, '#aaa', '#ccc', '#666', '#222');
+    rivet(ctx, X + 13 * s, Y + 9 * s, s);
+    rivet(ctx, X + 18 * s, Y + 9 * s, s);
+    rivet(ctx, X + 13 * s, Y + 13 * s, s);
+    rivet(ctx, X + 18 * s, Y + 13 * s, s);
+  }
+
+  function drawAerospaceFin(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 16 * s;
+    // left fin: sleek titanium swept aerodynamic
+    rect(ctx, X + 0 * s,   Y + 6 * s,  10 * s, 10 * s, '#dde0e8', '#445566');
+    rect(ctx, X + 0 * s,   Y + 3 * s,  8 * s, 3 * s,  '#dde0e8', '#445566');
+    rect(ctx, X + 0 * s,   Y + 0 * s,  6 * s, 3 * s,  '#dde0e8', '#445566');
+    // gloss highlight
+    px(ctx, X + 1 * s, Y + 1 * s, 1 * s, 14 * s, '#ffffff');
+    px(ctx, X + 0 * s, Y + 4 * s, 1 * s, 1 * s, '#ffffff');
+    // black stripe
+    px(ctx, X + 0 * s, Y + 10 * s, 10 * s, 1 * s, '#222');
+    // brand stencil (red triangle warning)
+    px(ctx, X + 4 * s, Y + 12 * s, 1 * s, 1 * s, '#cc1122');
+    px(ctx, X + 3 * s, Y + 13 * s, 3 * s, 1 * s, '#cc1122');
+    // serial number
+    px(ctx, X + 6 * s, Y + 13 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 7 * s, Y + 14 * s, 1 * s, 1 * s, '#222');
+    // right fin (mirror)
+    rect(ctx, X + 22 * s,  Y + 6 * s,  10 * s, 10 * s, '#dde0e8', '#445566');
+    rect(ctx, X + 24 * s,  Y + 3 * s,  8 * s, 3 * s,  '#dde0e8', '#445566');
+    rect(ctx, X + 26 * s,  Y + 0 * s,  6 * s, 3 * s,  '#dde0e8', '#445566');
+    px(ctx, X + 30 * s, Y + 1 * s, 1 * s, 14 * s, '#ffffff');
+    px(ctx, X + 31 * s, Y + 4 * s, 1 * s, 1 * s, '#ffffff');
+    px(ctx, X + 22 * s, Y + 10 * s, 10 * s, 1 * s, '#222');
+    px(ctx, X + 27 * s, Y + 12 * s, 1 * s, 1 * s, '#cc1122');
+    px(ctx, X + 26 * s, Y + 13 * s, 3 * s, 1 * s, '#cc1122');
+    px(ctx, X + 25 * s, Y + 13 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 24 * s, Y + 14 * s, 1 * s, 1 * s, '#222');
+    // center connector — milled aluminum bracket
+    cyl(ctx, X + 12 * s, Y + 6 * s, 8 * s, 10 * s, '#bbbbcc', '#eeeeff', '#666677', '#222');
+    px(ctx, X + 12 * s, Y + 6 * s, 8 * s, 1 * s, '#ffffff');
+    bolt(ctx, X + 13 * s, Y + 8 * s, s);
+    bolt(ctx, X + 17 * s, Y + 8 * s, s);
+    bolt(ctx, X + 13 * s, Y + 13 * s, s);
+    bolt(ctx, X + 17 * s, Y + 13 * s, s);
+  }
+
   function drawSteelFin(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 16 * s;
     // left fin with swept aerodynamic shape
@@ -799,12 +1201,28 @@
   // ---- catalog --------------------------------------------------------------
   const ALL = [
     {
+      id: 'hairdryer', name: 'Hairdryer', category: 'engine', tier: 0,
+      mass: 6, height: 32,
+      thrust: 16, burnRate: 0.6, jank: 5, breakChance: 0.0003,
+      flameColor: '#ffaa66',
+      sprite: drawHairdryer,
+      blurb: 'Maximum heat. Minimum dignity.',
+    },
+    {
       id: 'duct_tape', name: 'Duct Tape Booster', category: 'engine', tier: 0,
       mass: 8, height: 32,
       thrust: 22, burnRate: 1.4, jank: 20, breakChance: 0.004,
       flameColor: '#ffcc33',
       sprite: drawDuctTape,
       blurb: 'Held together by hope.',
+    },
+    {
+      id: 'lawnmower', name: 'Lawnmower Engine', category: 'engine', tier: 1,
+      mass: 18, height: 32,
+      thrust: 42, burnRate: 1.8, jank: 30, breakChance: 0.003,
+      flameColor: '#ff8833',
+      sprite: drawLawnmower,
+      blurb: 'Smells like victory and gasoline.',
     },
     {
       id: 'firework_booster', name: 'Firework Booster', category: 'engine', tier: 1,
@@ -849,6 +1267,21 @@
       blurb: 'No questions please.',
     },
     {
+      id: 'salvaged_motor', name: 'Salvaged Rocket Motor', category: 'engine', tier: 4,
+      mass: 50, height: 36,
+      thrust: 220, burnRate: 2.0, jank: 15, breakChance: 0.0008,
+      flameColor: '#ffcc88',
+      sprite: drawSalvagedMotor,
+      blurb: 'Probably borrowed from a launch pad. Probably.',
+    },
+    {
+      id: 'hairspray_cluster', name: 'Hairspray Cluster', category: 'fuel', tier: 0,
+      mass: 3, height: 32,
+      capacity: 35,
+      sprite: drawHairsprayCluster,
+      blurb: 'Six cans, one bad idea.',
+    },
+    {
       id: 'soda_bottle', name: 'Soda Bottle Tank', category: 'fuel', tier: 0,
       mass: 4, height: 32,
       capacity: 50,
@@ -875,6 +1308,20 @@
       capacity: 280,
       sprite: drawPropaneTank,
       blurb: 'Strapped in by a single shoelace.',
+    },
+    {
+      id: 'industrial_drum', name: 'Industrial Drum', category: 'fuel', tier: 3,
+      mass: 40, height: 38,
+      capacity: 500,
+      sprite: drawIndustrialDrum,
+      blurb: 'Definitely not full of motor oil.',
+    },
+    {
+      id: 'wheelbarrow', name: 'Wheelbarrow', category: 'body', tier: 0,
+      mass: 8, height: 28,
+      stability: 12, hullBonus: 5,
+      sprite: drawWheelbarrow,
+      blurb: 'Steers like a wheelbarrow.',
     },
     {
       id: 'lawn_chair', name: 'Lawn Chair Cockpit', category: 'body', tier: 0,
@@ -905,11 +1352,32 @@
       blurb: 'Reinforced. Probably stolen.',
     },
     {
+      id: 'fridge', name: 'Refrigerator', category: 'body', tier: 4,
+      mass: 50, height: 38,
+      stability: 50, hullBonus: 200,
+      sprite: drawFridge,
+      blurb: 'It still keeps the leftovers cold.',
+    },
+    {
+      id: 'pizza_box_fin', name: 'Pizza Box Fin', category: 'fin', tier: 0,
+      mass: 1, height: 14,
+      stability: 12,
+      sprite: drawPizzaBoxFin,
+      blurb: 'Smells like garlic. Steers like garlic.',
+    },
+    {
       id: 'cardboard_fin', name: 'Cardboard Fin', category: 'fin', tier: 0,
       mass: 2, height: 14,
       stability: 18,
       sprite: drawCardboardFin,
       blurb: 'Aerodynamic in spirit.',
+    },
+    {
+      id: 'stop_sign_fin', name: 'Stop Sign Fin', category: 'fin', tier: 1,
+      mass: 6, height: 16,
+      stability: 32,
+      sprite: drawStopSignFin,
+      blurb: 'Federal offense. Excellent stability.',
     },
     {
       id: 'plywood_fin', name: 'Plywood Fin', category: 'fin', tier: 1,
@@ -924,6 +1392,13 @@
       stability: 45,
       sprite: drawSteelFin,
       blurb: 'Heavy but firm.',
+    },
+    {
+      id: 'aerospace_fin', name: 'Aerospace Fin', category: 'fin', tier: 4,
+      mass: 12, height: 16,
+      stability: 70,
+      sprite: drawAerospaceFin,
+      blurb: 'Real hardware. Title questionable.',
     },
   ];
 
