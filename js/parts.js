@@ -1,26 +1,23 @@
 /* ==========================================================
    PARTS — catalog of 10 starter parts.
 
-   Each part:
-     id, name, category, mass (kg), tier (visual unlock order),
-     sprite(ctx, x, y, scale, frame) — programmatic pixel art,
-     plus category-specific stats:
-       engine:  thrust, burnRate, jank, breakChance, flameColor
-       fuel:    capacity
-       body:    stability, hullBonus
-       fin:     stability
+   Sprites use these helpers:
+     px(ctx, x, y, w, h, color)         — solid pixel block
+     rect(ctx, x, y, w, h, fill, out)   — block + 1px outline
+     cyl(ctx, x, y, w, h, body, hi, lo, outline)  — shaded cylinder
+     flame(...)                          — layered engine flame
 
-   Sprites use shaded pixel art: each cylindrical body has a
-   highlight column, a body color, and a shadow column for
-   subtle depth without breaking the chunky pixel-art feel.
+   Plus per-sprite icons for screws, labels, hazard symbols.
 
-   Engine flames are layered (outer / middle / core) and grow
-   with thrust intensity for satisfying ignition feedback.
+   Each part draws within a 32×32 cell with bottom anchored at (cx, by).
+   The hangar builder renders sprites at scale 1.0 (40×40 thumbnail),
+   the build canvas at 2.0, and flight at 1.5 — so 1px details are
+   highly visible. Detail counts.
    ========================================================== */
 (function (global) {
   'use strict';
 
-  // ---- pixel art helpers ----------------------------------------------------
+  // ---- core pixel helpers ---------------------------------------------------
   function px(ctx, x, y, w, h, color) {
     if (!color) return;
     ctx.fillStyle = color;
@@ -39,134 +36,276 @@
       ctx.fillRect(x + w - 1, y, 1, h);
     }
   }
-  /* shaded cylinder: highlight column + body + shadow column */
   function cyl(ctx, x, y, w, h, body, hi, lo, outline) {
     rect(ctx, x, y, w, h, body, outline);
-    if (hi) px(ctx, x + 1, y + 1, 1, h - 2, hi);                // highlight
-    if (lo) px(ctx, x + w - 2, y + 1, 1, h - 2, lo);            // shadow
+    if (hi) px(ctx, x + 1, y + 1, 1, h - 2, hi);
+    if (lo) px(ctx, x + w - 2, y + 1, 1, h - 2, lo);
   }
-  /* layered flame: outer (cool) → middle (hot) → core (white) */
   function flame(ctx, cx, top, baseW, len, t, colors) {
     const flick  = (t % 4 < 2) ? 0 : 1;
     const flick2 = (t % 6 < 3) ? 0 : 2;
     const wow    = (t % 8 < 4) ? 0 : 1;
     const outer  = colors[0], mid = colors[1], core = colors[2];
-    // outer: widest, tallest with random tip
     rect(ctx, cx - baseW / 2 - 2 + wow, top, baseW + 4, len + flick2, outer);
-    // tapered tip
     rect(ctx, cx - baseW / 2 + 1, top + len + flick2, baseW - 2, 3 + flick, outer);
-    // middle layer
     rect(ctx, cx - baseW / 2, top + 1, baseW, len + flick, mid);
     rect(ctx, cx - baseW / 2 + 2, top + len + flick, baseW - 4, 2 + flick2, mid);
-    // hot core
     rect(ctx, cx - baseW / 2 + 2, top + 2, baseW - 4, len - 2, core);
-    // bright sparkle at tip
     rect(ctx, cx - 1, top + len - 1 + flick, 2, 2, '#ffffff');
   }
 
+  // ---- detail helpers -------------------------------------------------------
+  function bolt(ctx, x, y, s, dark, hi) {
+    // 2x2 bolt with a 1-pixel highlight on the upper-left
+    px(ctx, x, y, 2 * s, 2 * s, dark || '#1a1a1a');
+    px(ctx, x, y, 1 * s, 1 * s, hi || '#888');
+  }
+  function rivet(ctx, x, y, s) {
+    // small 1x1 rivet dot
+    px(ctx, x, y, 1 * s, 1 * s, '#1a1a1a');
+  }
+  function trefoil(ctx, cx, cy, s, color) {
+    // tiny radiation trefoil symbol (~6×6)
+    px(ctx, cx, cy, 1 * s, 1 * s, color);
+    px(ctx, cx - 2 * s, cy - 2 * s, 2 * s, 2 * s, color);
+    px(ctx, cx + 1 * s, cy - 2 * s, 2 * s, 2 * s, color);
+    px(ctx, cx - 1 * s, cy + 1 * s, 2 * s, 2 * s, color);
+  }
+  function chevron(ctx, x, y, s, color) {
+    // small 6x4 caution chevron
+    px(ctx, x, y + 2 * s, 2 * s, 1 * s, color);
+    px(ctx, x + 2 * s, y + 1 * s, 2 * s, 1 * s, color);
+    px(ctx, x + 4 * s, y, 2 * s, 1 * s, color);
+  }
+  // ridges/corrugation: parallel 1-px ribs on a vertical span
+  function ridges(ctx, x, y, w, h, color, every) {
+    every = every || 3;
+    for (let yy = y; yy < y + h; yy += every) px(ctx, x, yy, w, 1, color);
+  }
+  // brand text: a row of micro-rectangles that read as letters
+  function brandRow(ctx, x, y, s, color) {
+    // S-C-R-A-P pattern in 1-px shapes (~2px wide each, 1px gap)
+    px(ctx, x, y, 2 * s, 3 * s, color);          // S
+    px(ctx, x + 3 * s, y, 2 * s, 3 * s, color);  // C
+    px(ctx, x + 6 * s, y, 2 * s, 3 * s, color);  // R
+    px(ctx, x + 9 * s, y, 2 * s, 3 * s, color);  // A
+    px(ctx, x + 12 * s, y, 2 * s, 3 * s, color); // P
+    // gaps to suggest letters
+    px(ctx, x + 1 * s, y + 1 * s, 1 * s, 1 * s, '#222');
+    px(ctx, x + 4 * s, y + 1 * s, 1 * s, 1 * s, '#222');
+    px(ctx, x + 7 * s, y + 1 * s, 1 * s, 1 * s, '#222');
+    px(ctx, x + 10 * s, y + 1 * s, 1 * s, 1 * s, '#222');
+    px(ctx, x + 13 * s, y + 1 * s, 1 * s, 1 * s, '#222');
+  }
+
   // ============================================================
-  // PARTS — sprite functions take (ctx, centerX, bottomY, scale, frame)
-  // Each part draws within a 32×32 cell at its bottom anchored at by.
+  // PARTS — sprite functions
   // ============================================================
 
   function drawSodaBottle(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 32 * s;
-    // cap (red plastic)
+    // bottle cap with screw ridges
     cyl(ctx, X + 12 * s, Y + 0,        8 * s, 4 * s,  '#cc4422', '#ee6644', '#882211', '#441100');
-    // neck
+    px(ctx, X + 12 * s, Y + 1 * s, 8 * s, 1 * s, '#ee6644');
+    px(ctx, X + 13 * s, Y + 2 * s, 1 * s, 1 * s, '#882211');
+    px(ctx, X + 15 * s, Y + 2 * s, 1 * s, 1 * s, '#882211');
+    px(ctx, X + 17 * s, Y + 2 * s, 1 * s, 1 * s, '#882211');
+    px(ctx, X + 19 * s, Y + 2 * s, 1 * s, 1 * s, '#882211');
+    // threaded neck
     cyl(ctx, X + 10 * s, Y + 4 * s,   12 * s, 5 * s,  '#aacc77', '#cce099', '#668844', '#445522');
-    // body
-    cyl(ctx, X + 6 * s,  Y + 8 * s,   20 * s, 22 * s, '#bbdd88', '#ddeeaa', '#669944', '#445522');
-    // label band
-    rect(ctx, X + 6 * s,  Y + 14 * s, 20 * s, 7 * s,  '#cc3333', '#552211');
-    px(ctx, X + 7 * s,  Y + 14 * s, 19 * s, 1 * s, '#ee5544');
-    // SCRAP COLA badge
-    px(ctx, X + 12 * s, Y + 16 * s, 1 * s, 3 * s, '#ffeecc');
-    px(ctx, X + 14 * s, Y + 16 * s, 2 * s, 3 * s, '#ffeecc');
-    px(ctx, X + 17 * s, Y + 16 * s, 1 * s, 3 * s, '#ffeecc');
-    px(ctx, X + 19 * s, Y + 16 * s, 2 * s, 3 * s, '#ffeecc');
-    // bubbles in liquid
-    px(ctx, X + 9 * s,  Y + 25 * s, 2 * s, 1 * s, '#ddeeaa');
-    px(ctx, X + 13 * s, Y + 27 * s, 1 * s, 1 * s, '#ddeeaa');
-    px(ctx, X + 21 * s, Y + 24 * s, 1 * s, 1 * s, '#ddeeaa');
+    px(ctx, X + 10 * s, Y + 5 * s, 12 * s, 1 * s, '#cce099');
+    px(ctx, X + 10 * s, Y + 7 * s, 12 * s, 1 * s, '#668844');
+    // shoulder taper
+    rect(ctx, X + 8 * s, Y + 9 * s, 16 * s, 2 * s, '#bbdd88', '#445522');
+    // main bottle body
+    cyl(ctx, X + 6 * s,  Y + 11 * s,  20 * s, 19 * s, '#bbdd88', '#ddeeaa', '#669944', '#445522');
+    // bright vertical highlight on left (translucent feel)
+    px(ctx, X + 7 * s, Y + 12 * s, 1 * s, 17 * s, '#ddeeaa');
+    px(ctx, X + 8 * s, Y + 12 * s, 1 * s, 4 * s, '#f0ffd0');
+    // big red label band
+    rect(ctx, X + 6 * s,  Y + 14 * s, 20 * s, 8 * s,  '#cc3333', '#552211');
+    px(ctx, X + 7 * s,  Y + 14 * s, 18 * s, 1 * s, '#ee5544');  // top highlight
+    px(ctx, X + 7 * s,  Y + 21 * s, 18 * s, 1 * s, '#992211');  // bottom shadow
+    // SCRAP COLA branding (5 letterforms)
+    brandRow(ctx, X + 8 * s, Y + 16 * s, s, '#ffeecc');
+    // fizz bubbles in liquid
+    px(ctx, X + 8 * s,  Y + 23 * s, 2 * s, 1 * s, '#ddeeaa');
+    px(ctx, X + 13 * s, Y + 25 * s, 1 * s, 1 * s, '#ddeeaa');
+    px(ctx, X + 18 * s, Y + 24 * s, 1 * s, 1 * s, '#ddeeaa');
+    px(ctx, X + 22 * s, Y + 27 * s, 2 * s, 1 * s, '#ddeeaa');
+    px(ctx, X + 11 * s, Y + 28 * s, 1 * s, 1 * s, '#ddeeaa');
+    // condensation droplets
+    px(ctx, X + 10 * s, Y + 17 * s, 1 * s, 1 * s, '#f0ffe0');
+    px(ctx, X + 19 * s, Y + 19 * s, 1 * s, 1 * s, '#f0ffe0');
+    // bottle base lip
+    rect(ctx, X + 6 * s, Y + 30 * s, 20 * s, 2 * s, '#669944', '#445522');
   }
 
   function drawSoupCan(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 32 * s;
-    // top rim
-    rect(ctx, X + 4 * s,  Y + 2 * s,  24 * s, 4 * s,  '#cccccc', '#444444');
-    px(ctx, X + 5 * s,  Y + 3 * s, 22 * s, 1 * s, '#ffffff');
-    // body
-    cyl(ctx, X + 4 * s,  Y + 6 * s,  24 * s, 22 * s, '#cc3333', '#ee5544', '#882211', '#440000');
-    // cream label
-    cyl(ctx, X + 6 * s,  Y + 11 * s, 20 * s, 11 * s, '#fff3cc', '#ffeebb', '#cca877', '#aa8855');
-    // brand text bars
-    px(ctx, X + 9 * s,  Y + 14 * s, 14 * s, 2 * s, '#cc3333');
-    px(ctx, X + 11 * s, Y + 18 * s, 10 * s, 1 * s, '#cc3333');
+    // top rim with pull-tab indicator
+    rect(ctx, X + 4 * s,  Y + 1 * s,  24 * s, 4 * s,  '#cccccc', '#444444');
+    px(ctx, X + 5 * s,  Y + 2 * s, 22 * s, 1 * s, '#ffffff');
+    px(ctx, X + 14 * s, Y + 0,        4 * s, 2 * s, '#aaaaaa');  // pull-tab nub
+    // body with corrugated ribs
+    cyl(ctx, X + 4 * s,  Y + 5 * s,  24 * s, 23 * s, '#cc3333', '#ee5544', '#882211', '#440000');
+    // rib lines (1 pixel rings every 5 pixels)
+    px(ctx, X + 4 * s, Y + 7 * s,  24 * s, 1 * s, '#aa2222');
+    px(ctx, X + 4 * s, Y + 25 * s, 24 * s, 1 * s, '#aa2222');
+    // cream label panel
+    rect(ctx, X + 6 * s, Y + 10 * s, 20 * s, 12 * s, '#fff3cc', '#aa8855');
+    px(ctx, X + 7 * s, Y + 10 * s, 18 * s, 1 * s, '#ffffff');   // label highlight
+    px(ctx, X + 7 * s, Y + 21 * s, 18 * s, 1 * s, '#ddc888');   // label shadow
+    // red brand band across label
+    rect(ctx, X + 6 * s, Y + 13 * s, 20 * s, 3 * s, '#cc3333', null);
+    px(ctx, X + 6 * s, Y + 13 * s, 20 * s, 1 * s, '#ee5544');
+    // SCRAP brand letters on the band
+    brandRow(ctx, X + 8 * s, Y + 14 * s, s, '#ffeecc');
+    // fine print (small dashes below band)
+    for (let i = 0; i < 5; i++) px(ctx, X + (8 + i * 3) * s, Y + 18 * s, 2 * s, 1 * s, '#aa8855');
+    // dent (chaos detail)
+    px(ctx, X + 22 * s, Y + 19 * s, 2 * s, 3 * s, '#882211');
     // bottom rim
     rect(ctx, X + 4 * s,  Y + 28 * s, 24 * s, 4 * s,  '#cccccc', '#444444');
     px(ctx, X + 5 * s,  Y + 29 * s, 22 * s, 1 * s, '#ffffff');
+    px(ctx, X + 5 * s,  Y + 31 * s, 22 * s, 1 * s, '#888888');
+    // barcode
+    px(ctx, X + 7 * s,  Y + 19 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 9 * s,  Y + 19 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 10 * s, Y + 19 * s, 2 * s, 2 * s, '#222');
   }
 
   function drawLawnChair(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 28 * s;
-    // backrest slats
+    // backrest top bar
+    rect(ctx, X + 4 * s, Y + 0,         24 * s, 2 * s, '#888899', '#333344');
+    // backrest webbing (orange + alternating cream stripes)
     for (let i = 0; i < 3; i++) {
-      rect(ctx, X + 6 * s, Y + (2 + i * 4) * s, 18 * s, 2 * s, '#ff9933', '#552200');
-      px(ctx, X + 6 * s, Y + (2 + i * 4) * s, 18 * s, 1 * s, '#ffbb55');
+      const yy = Y + (2 + i * 4) * s;
+      rect(ctx, X + 6 * s, yy, 18 * s, 2 * s, '#ff9933', '#552200');
+      px(ctx, X + 6 * s, yy, 18 * s, 1 * s, '#ffbb55');
+      // criss-cross weave hint
+      for (let j = 0; j < 9; j++) {
+        px(ctx, X + (7 + j * 2) * s, yy + 1 * s, 1 * s, 1 * s, '#cc7722');
+      }
     }
-    // seat
+    // armrest caps (rounded plastic feel)
+    rect(ctx, X + 2 * s,  Y + 8 * s, 4 * s, 2 * s, '#ddaa77', '#552200');
+    rect(ctx, X + 26 * s, Y + 8 * s, 4 * s, 2 * s, '#ddaa77', '#552200');
+    // armrest tubes
+    px(ctx, X + 4 * s,  Y + 10 * s, 2 * s, 4 * s, '#aabbcc');
+    px(ctx, X + 26 * s, Y + 10 * s, 2 * s, 4 * s, '#aabbcc');
+    // duct tape patch on left armrest
+    px(ctx, X + 3 * s, Y + 11 * s, 4 * s, 2 * s, '#aaaaaa');
+    px(ctx, X + 4 * s, Y + 11 * s, 1 * s, 1 * s, '#cccccc');
+    // seat with weave
     rect(ctx, X + 4 * s,  Y + 14 * s, 22 * s, 4 * s, '#ff9933', '#552200');
     px(ctx, X + 4 * s,  Y + 14 * s, 22 * s, 1 * s, '#ffbb55');
-    // arm rests
-    px(ctx, X + 4 * s, Y + 8 * s, 2 * s, 6 * s, '#ddaa77');
-    px(ctx, X + 26 * s, Y + 8 * s, 2 * s, 6 * s, '#ddaa77');
-    // legs (steel tubing)
+    for (let i = 0; i < 11; i++) {
+      px(ctx, X + (5 + i * 2) * s, Y + 16 * s, 1 * s, 1 * s, '#cc7722');
+    }
+    // beverage holder (cup hole)
+    rect(ctx, X + 22 * s, Y + 14 * s, 4 * s, 4 * s, '#222', null);
+    px(ctx, X + 23 * s, Y + 15 * s, 2 * s, 2 * s, '#000');
+    // legs (steel tubing with bracket bolts)
     cyl(ctx, X + 4 * s,  Y + 18 * s, 2 * s,  10 * s, '#999999', '#cccccc', '#444444');
     cyl(ctx, X + 24 * s, Y + 18 * s, 2 * s,  10 * s, '#999999', '#cccccc', '#444444');
-    // duct tape strap holding rocket on
-    rect(ctx, X + 2 * s,  Y + 12 * s, 28 * s, 1 * s, '#bbbbbb');
+    // cross brace
+    rect(ctx, X + 6 * s, Y + 23 * s, 18 * s, 1 * s, '#777777', null);
+    // duct-tape strap holding rocket
+    rect(ctx, X + 2 * s, Y + 12 * s, 28 * s, 1 * s, '#bbbbbb', null);
+    px(ctx, X + 4 * s, Y + 12 * s, 6 * s, 1 * s, '#dddddd');
+    // foot pads
+    rect(ctx, X + 3 * s,  Y + 27 * s, 4 * s, 1 * s, '#222', null);
+    rect(ctx, X + 23 * s, Y + 27 * s, 4 * s, 1 * s, '#222', null);
   }
 
   function drawShoppingCart(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 30 * s;
-    // basket
+    // basket top frame
+    rect(ctx, X + 2 * s,  Y + 2 * s,  28 * s, 2 * s, '#bbbbbb', '#222222');
+    // basket body
     rect(ctx, X + 2 * s,  Y + 4 * s,  28 * s, 18 * s, '#aaaaaa', '#222222');
-    // basket grid
-    for (let i = 0; i < 4; i++) {
-      px(ctx, X + (4 + i * 6) * s, Y + 6 * s, 1 * s, 16 * s, '#666666');
+    // vertical mesh wires
+    for (let i = 0; i < 7; i++) {
+      px(ctx, X + (4 + i * 4) * s, Y + 4 * s, 1 * s, 18 * s, '#666666');
     }
+    // horizontal mesh wires
+    px(ctx, X + 2 * s, Y + 8 * s,  28 * s, 1 * s, '#666666');
     px(ctx, X + 2 * s, Y + 12 * s, 28 * s, 1 * s, '#666666');
-    // shine on top edge
+    px(ctx, X + 2 * s, Y + 16 * s, 28 * s, 1 * s, '#666666');
+    // front-edge highlight
     px(ctx, X + 3 * s, Y + 5 * s, 26 * s, 1 * s, '#dddddd');
-    // wheels
+    // child-seat fold line (diagonal slot)
+    px(ctx, X + 8 * s, Y + 6 * s, 6 * s, 1 * s, '#444');
+    px(ctx, X + 9 * s, Y + 7 * s, 6 * s, 1 * s, '#444');
+    // ad placard (yellow card on the side)
+    rect(ctx, X + 18 * s, Y + 14 * s, 8 * s, 4 * s, '#ffcc33', '#664400');
+    px(ctx, X + 19 * s, Y + 15 * s, 6 * s, 1 * s, '#000');
+    px(ctx, X + 19 * s, Y + 16 * s, 4 * s, 1 * s, '#000');
+    // wheels with hubs
     cyl(ctx, X + 4 * s,  Y + 24 * s, 6 * s, 6 * s, '#222222', '#444444', '#000000', '#000000');
     cyl(ctx, X + 22 * s, Y + 24 * s, 6 * s, 6 * s, '#222222', '#444444', '#000000', '#000000');
-    px(ctx, X + 6 * s,  Y + 26 * s, 2 * s, 2 * s, '#666666');
-    px(ctx, X + 24 * s, Y + 26 * s, 2 * s, 2 * s, '#666666');
-    // handle (red plastic over steel)
+    px(ctx, X + 6 * s,  Y + 26 * s, 2 * s, 2 * s, '#888888');
+    px(ctx, X + 24 * s, Y + 26 * s, 2 * s, 2 * s, '#888888');
+    px(ctx, X + 7 * s,  Y + 27 * s, 1 * s, 1 * s, '#cccccc');
+    px(ctx, X + 25 * s, Y + 27 * s, 1 * s, 1 * s, '#cccccc');
+    // wheel struts
+    px(ctx, X + 8 * s,  Y + 22 * s, 1 * s, 4 * s, '#444');
+    px(ctx, X + 22 * s, Y + 22 * s, 1 * s, 4 * s, '#444');
+    // red plastic handle bar with rubber grip
     rect(ctx, X + 26 * s, Y + 0 * s,  4 * s, 6 * s, '#cc3333', '#440000');
     px(ctx, X + 27 * s, Y + 1 * s, 1 * s, 4 * s, '#ee5555');
+    px(ctx, X + 26 * s, Y + 1 * s, 4 * s, 1 * s, '#882222');
+    px(ctx, X + 26 * s, Y + 3 * s, 4 * s, 1 * s, '#882222');
+    // coin slot
+    rect(ctx, X + 6 * s, Y + 1 * s, 3 * s, 1 * s, '#222', null);
   }
 
   function drawDuctTape(ctx, cx, by, s, frame) {
     const X = cx - 16 * s, Y = by - 32 * s;
-    // engine bell (dirty silver tape)
-    cyl(ctx, X + 6 * s,  Y + 16 * s, 20 * s, 12 * s, '#a8a8a8', '#cccccc', '#555555', '#1a1a1a');
-    // tape stripes
-    px(ctx, X + 6 * s,  Y + 19 * s, 20 * s, 1 * s, '#666666');
-    px(ctx, X + 6 * s,  Y + 23 * s, 20 * s, 1 * s, '#666666');
-    px(ctx, X + 6 * s,  Y + 27 * s, 20 * s, 1 * s, '#666666');
-    // peeling tape edge (chaos detail)
-    px(ctx, X + 5 * s,  Y + 21 * s, 1 * s, 4 * s, '#888888');
-    // top mount
-    cyl(ctx, X + 10 * s, Y + 10 * s, 12 * s, 6 * s, '#777777', '#999999', '#333333', '#1a1a1a');
-    // bell rim
-    rect(ctx, X + 8 * s,  Y + 28 * s, 16 * s, 2 * s, '#444444', '#1a1a1a');
-    // hot inside the bell
+    // top mount with bolts (bolted to fuel tank above)
+    cyl(ctx, X + 10 * s, Y + 8 * s, 12 * s, 4 * s, '#777777', '#999999', '#333333', '#1a1a1a');
+    rivet(ctx, X + 11 * s, Y + 9 * s, s);
+    rivet(ctx, X + 14 * s, Y + 9 * s, s);
+    rivet(ctx, X + 17 * s, Y + 9 * s, s);
+    rivet(ctx, X + 20 * s, Y + 9 * s, s);
+    // fuel injection collar
+    cyl(ctx, X + 11 * s, Y + 12 * s, 10 * s, 2 * s, '#555555', '#777777', '#333333', '#1a1a1a');
+    // throat (narrow neck)
+    cyl(ctx, X + 12 * s, Y + 14 * s, 8 * s, 2 * s, '#888888', '#aaaaaa', '#444444', '#1a1a1a');
+    // bell (widening, bell-mouth shape)
+    rect(ctx, X + 10 * s, Y + 16 * s, 12 * s, 2 * s, '#a8a8a8', '#1a1a1a');
+    rect(ctx, X + 8 * s,  Y + 18 * s, 16 * s, 2 * s, '#a8a8a8', '#1a1a1a');
+    rect(ctx, X + 7 * s,  Y + 20 * s, 18 * s, 8 * s, '#a8a8a8', '#1a1a1a');
+    // duct tape wraps (varying gray)
+    px(ctx, X + 7 * s,  Y + 21 * s, 18 * s, 1 * s, '#888888');
+    px(ctx, X + 7 * s,  Y + 23 * s, 18 * s, 1 * s, '#666666');
+    px(ctx, X + 7 * s,  Y + 25 * s, 18 * s, 1 * s, '#888888');
+    px(ctx, X + 7 * s,  Y + 27 * s, 18 * s, 1 * s, '#666666');
+    // peeling tape edge for chaos
+    px(ctx, X + 6 * s,  Y + 22 * s, 1 * s, 4 * s, '#aaaaaa');
+    px(ctx, X + 6 * s,  Y + 22 * s, 2 * s, 1 * s, '#cccccc');
+    // sloppy "X" cross-tape patch
+    px(ctx, X + 13 * s, Y + 22 * s, 1 * s, 4 * s, '#999999');
+    px(ctx, X + 19 * s, Y + 22 * s, 1 * s, 4 * s, '#999999');
+    // metallic vertical highlight
+    px(ctx, X + 9 * s, Y + 19 * s, 1 * s, 9 * s, '#cccccc');
+    // bell rim (heat-darkened bottom edge)
+    rect(ctx, X + 6 * s,  Y + 28 * s, 20 * s, 2 * s, '#444444', '#1a1a1a');
+    px(ctx, X + 6 * s, Y + 28 * s, 20 * s, 1 * s, '#666666');
+    // inside of bell — dark (or hot when thrusting)
     if (frame && frame.thrusting) {
-      px(ctx, X + 10 * s, Y + 26 * s, 12 * s, 2 * s, '#ff7733');
+      px(ctx, X + 9 * s, Y + 26 * s, 14 * s, 2 * s, '#ff7733');
+      px(ctx, X + 11 * s, Y + 25 * s, 10 * s, 1 * s, '#ffeeaa');
+    } else {
+      px(ctx, X + 9 * s, Y + 26 * s, 14 * s, 2 * s, '#1a1a1a');
     }
+    // "NO STEP" stencil (suggestion via 4-bar pattern)
+    px(ctx, X + 11 * s, Y + 19 * s, 2 * s, 1 * s, '#444');
+    px(ctx, X + 14 * s, Y + 19 * s, 2 * s, 1 * s, '#444');
+    px(ctx, X + 17 * s, Y + 19 * s, 2 * s, 1 * s, '#444');
+    px(ctx, X + 20 * s, Y + 19 * s, 1 * s, 1 * s, '#444');
     // exhaust flame
     if (frame && frame.thrusting) {
       flame(ctx, X + 16 * s, Y + 30 * s, 14 * s, 14 * s, frame.t,
@@ -176,31 +315,41 @@
 
   function drawFirework(ctx, cx, by, s, frame) {
     const X = cx - 16 * s, Y = by - 32 * s;
-    // tube (red cardboard)
-    cyl(ctx, X + 8 * s,  Y + 8 * s,  16 * s, 22 * s, '#cc2222', '#ee4444', '#770000', '#330000');
-    // gold bands (printed on the tube)
-    rect(ctx, X + 8 * s,  Y + 14 * s, 16 * s, 4 * s,  '#ffcc33', '#996600');
-    px(ctx, X + 8 * s,  Y + 14 * s, 16 * s, 1 * s, '#ffeeaa');
-    // text-y squiggle
-    px(ctx, X + 12 * s, Y + 16 * s, 8 * s, 1 * s, '#cc8800');
-    // cone top
-    rect(ctx, X + 12 * s, Y + 4 * s,  8 * s,  4 * s,  '#cc2222', '#770000');
-    rect(ctx, X + 14 * s, Y + 0 * s,  4 * s,  4 * s,  '#ffeecc', '#aa8844');
-    // fuse
-    px(ctx, X + 16 * s, Y - 2 * s, 1 * s, 2 * s, '#664400');
-    // bottom igniter
-    rect(ctx, X + 8 * s,  Y + 30 * s, 16 * s, 2 * s,  '#222222', null);
-    // chaotic flame (firework-style)
+    // pointy cone top with star pattern
+    rect(ctx, X + 13 * s, Y + 6 * s,  6 * s, 4 * s, '#cc2222', '#770000');
+    rect(ctx, X + 14 * s, Y + 4 * s,  4 * s, 2 * s, '#cc2222', '#770000');
+    rect(ctx, X + 15 * s, Y + 2 * s,  2 * s, 2 * s, '#cc2222', '#770000');
+    px(ctx, X + 15 * s, Y + 3 * s, 1 * s, 1 * s, '#ee4444');
+    // fuse with sparkle
+    px(ctx, X + 16 * s, Y - 2 * s, 1 * s, 4 * s, '#664400');
+    px(ctx, X + 16 * s, Y - 3 * s, 1 * s, 1 * s, '#ffaa00');
+    // tube body (red cardboard)
+    cyl(ctx, X + 8 * s,  Y + 10 * s, 16 * s, 20 * s, '#cc2222', '#ee4444', '#770000', '#330000');
+    // primary gold band (top)
+    rect(ctx, X + 8 * s,  Y + 12 * s, 16 * s, 3 * s,  '#ffcc33', '#996600');
+    px(ctx, X + 8 * s,  Y + 12 * s, 16 * s, 1 * s, '#ffeeaa');
+    // BLASTO brand letters (5-letter pattern)
+    brandRow(ctx, X + 9 * s, Y + 13 * s, s, '#cc2222');
+    // secondary gold band (middle)
+    rect(ctx, X + 8 * s, Y + 18 * s, 16 * s, 2 * s, '#ffcc33', '#996600');
+    // little star icon
+    px(ctx, X + 11 * s, Y + 22 * s, 1 * s, 1 * s, '#ffcc33');
+    px(ctx, X + 10 * s, Y + 23 * s, 3 * s, 1 * s, '#ffcc33');
+    px(ctx, X + 11 * s, Y + 24 * s, 1 * s, 1 * s, '#ffcc33');
+    // warning chevron decal on right side
+    chevron(ctx, X + 18 * s, Y + 22 * s, s, '#ffcc33');
+    // tertiary gold band (bottom)
+    rect(ctx, X + 8 * s, Y + 26 * s, 16 * s, 2 * s, '#ffcc33', '#996600');
+    // bottom igniter (charred black)
+    rect(ctx, X + 8 * s, Y + 30 * s, 16 * s, 2 * s, '#222222', '#000000');
+    px(ctx, X + 9 * s, Y + 30 * s, 14 * s, 1 * s, '#444');
+    // chaotic flame
     if (frame && frame.thrusting) {
       const r = ((frame.t * 7) | 0) % 5;
-      // big bursty outer
       rect(ctx, X + (6 - r) * s, Y + 32 * s, (20 + r * 2) * s, (10 + r) * s, '#ff5511');
       rect(ctx, X + (10 - r) * s, Y + (38 + r) * s, (12 + r * 2) * s, 4 * s, '#ff5511');
-      // mid
       rect(ctx, X + (10 - r) * s, Y + 33 * s, (12 + r * 2) * s, (8 + r) * s, '#ff8833');
-      // bright core
       rect(ctx, X + 13 * s, Y + 34 * s, 6 * s, (10 + r) * s, '#ffff88');
-      // sparks shooting sideways
       px(ctx, X + (4 + r) * s, Y + (36 + r) * s, 2 * s, 1 * s, '#ffeebb');
       px(ctx, X + (28 - r) * s, Y + (38 - r) * s, 2 * s, 1 * s, '#ffeebb');
       px(ctx, X + (8 - r) * s, Y + (42 - r) * s, 1 * s, 2 * s, '#ffff88');
@@ -209,22 +358,43 @@
 
   function drawLeafBlower(ctx, cx, by, s, frame) {
     const X = cx - 16 * s, Y = by - 32 * s;
-    // intake (top fan housing)
-    cyl(ctx, X + 12 * s, Y + 4 * s,  8 * s,  10 * s, '#33aacc', '#66ccee', '#114466', '#062234');
-    // fan blades visible
-    px(ctx, X + 14 * s, Y + 6 * s, 4 * s, 1 * s, '#222233');
-    px(ctx, X + 14 * s, Y + 9 * s, 4 * s, 1 * s, '#222233');
-    px(ctx, X + 14 * s, Y + 12 * s, 4 * s, 1 * s, '#222233');
-    // main body (turbine housing)
+    // intake fan housing
+    cyl(ctx, X + 12 * s, Y + 2 * s,  8 * s, 12 * s, '#33aacc', '#66ccee', '#114466', '#062234');
+    // visible fan blades behind grille
+    px(ctx, X + 13 * s, Y + 4 * s, 6 * s, 1 * s, '#222233');
+    px(ctx, X + 13 * s, Y + 7 * s, 6 * s, 1 * s, '#222233');
+    px(ctx, X + 13 * s, Y + 10 * s, 6 * s, 1 * s, '#222233');
+    px(ctx, X + 13 * s, Y + 13 * s, 6 * s, 1 * s, '#222233');
+    // central fan hub
+    px(ctx, X + 15 * s, Y + 8 * s, 2 * s, 2 * s, '#aa6622');
+    // intake rim
+    rect(ctx, X + 12 * s, Y + 1 * s, 8 * s, 1 * s, '#bbeeff', null);
+    // main turbine body
     cyl(ctx, X + 4 * s,  Y + 14 * s, 24 * s, 12 * s, '#33aacc', '#66ccee', '#114466', '#062234');
-    // viewport / sticker
-    rect(ctx, X + 6 * s,  Y + 16 * s, 6 * s,  6 * s, '#88ddff', '#114466');
-    px(ctx, X + 7 * s,  Y + 17 * s, 1 * s, 1 * s, '#ffffff');
-    // power label
-    rect(ctx, X + 14 * s, Y + 18 * s, 12 * s, 4 * s, '#ffaa22', '#552200');
-    px(ctx, X + 16 * s, Y + 19 * s, 8 * s, 2 * s, '#ffeeaa');
-    // outflow pipe
+    // cooling slats (vent grille)
+    px(ctx, X + 6 * s,  Y + 17 * s, 6 * s, 1 * s, '#062234');
+    px(ctx, X + 6 * s,  Y + 19 * s, 6 * s, 1 * s, '#062234');
+    px(ctx, X + 6 * s,  Y + 21 * s, 6 * s, 1 * s, '#062234');
+    // viewport / status display
+    rect(ctx, X + 14 * s, Y + 16 * s, 6 * s, 5 * s, '#88ddff', '#114466');
+    px(ctx, X + 15 * s, Y + 17 * s, 1 * s, 1 * s, '#ffffff');
+    px(ctx, X + 17 * s, Y + 18 * s, 1 * s, 1 * s, '#88ff88'); // green status LED
+    // TURBO power label
+    rect(ctx, X + 22 * s, Y + 17 * s, 5 * s, 4 * s, '#ffaa22', '#552200');
+    px(ctx, X + 23 * s, Y + 18 * s, 3 * s, 1 * s, '#ffeeaa');
+    px(ctx, X + 23 * s, Y + 19 * s, 1 * s, 1 * s, '#552200');
+    px(ctx, X + 25 * s, Y + 19 * s, 1 * s, 1 * s, '#552200');
+    // edge bolts holding the housing together
+    rivet(ctx, X + 5 * s,  Y + 15 * s, s);
+    rivet(ctx, X + 26 * s, Y + 15 * s, s);
+    rivet(ctx, X + 5 * s,  Y + 24 * s, s);
+    rivet(ctx, X + 26 * s, Y + 24 * s, s);
+    // electric cord stub coiling out the back
+    px(ctx, X + 4 * s, Y + 22 * s, 2 * s, 1 * s, '#222');
+    px(ctx, X + 3 * s, Y + 23 * s, 2 * s, 1 * s, '#222');
+    // outflow pipe (where the cool flame comes out)
     cyl(ctx, X + 8 * s,  Y + 26 * s, 16 * s, 4 * s, '#666666', '#999999', '#222222', '#1a1a1a');
+    px(ctx, X + 9 * s, Y + 27 * s, 14 * s, 1 * s, '#aaaaaa');
     // cool blue flame
     if (frame && frame.thrusting) {
       flame(ctx, X + 16 * s, Y + 30 * s, 12 * s, 12 * s, frame.t,
@@ -239,65 +409,122 @@
     px(ctx, X + 6 * s,  Y + 4 * s, 4 * s, 4 * s, '#000000');
     px(ctx, X + 14 * s, Y + 4 * s, 4 * s, 4 * s, '#000000');
     px(ctx, X + 22 * s, Y + 4 * s, 4 * s, 4 * s, '#000000');
-    // shielding casing
+    // shielding casing — bolted plate look
     cyl(ctx, X + 4 * s,  Y + 8 * s,  24 * s, 24 * s, '#444444', '#666666', '#222222', '#0a0a0a');
+    // corner rivets on the case
+    rivet(ctx, X + 5 * s,  Y + 9 * s, s);
+    rivet(ctx, X + 26 * s, Y + 9 * s, s);
+    rivet(ctx, X + 5 * s,  Y + 30 * s, s);
+    rivet(ctx, X + 26 * s, Y + 30 * s, s);
+    rivet(ctx, X + 5 * s,  Y + 19 * s, s);
+    rivet(ctx, X + 26 * s, Y + 19 * s, s);
+    // cooling fins on the sides
+    px(ctx, X + 4 * s, Y + 12 * s, 1 * s, 12 * s, '#222');
+    px(ctx, X + 27 * s, Y + 12 * s, 1 * s, 12 * s, '#222');
+    px(ctx, X + 3 * s, Y + 14 * s, 1 * s, 1 * s, '#666');
+    px(ctx, X + 3 * s, Y + 18 * s, 1 * s, 1 * s, '#666');
+    px(ctx, X + 3 * s, Y + 22 * s, 1 * s, 1 * s, '#666');
+    px(ctx, X + 28 * s, Y + 14 * s, 1 * s, 1 * s, '#666');
+    px(ctx, X + 28 * s, Y + 18 * s, 1 * s, 1 * s, '#666');
+    px(ctx, X + 28 * s, Y + 22 * s, 1 * s, 1 * s, '#666');
+    // status LEDs (red + green) at top of casing
+    px(ctx, X + 8 * s, Y + 10 * s, 2 * s, 1 * s, '#ff3333');
+    px(ctx, X + 11 * s, Y + 10 * s, 2 * s, 1 * s, '#88ff88');
+    px(ctx, X + 14 * s, Y + 10 * s, 2 * s, 1 * s, '#ff3333');
+    // pressure gauge dial
+    rect(ctx, X + 18 * s, Y + 9 * s, 7 * s, 4 * s, '#dddddd', '#222');
+    px(ctx, X + 21 * s, Y + 11 * s, 1 * s, 1 * s, '#cc0000'); // needle
+    px(ctx, X + 22 * s, Y + 10 * s, 1 * s, 1 * s, '#cc0000');
     // inner radiation glow window
     const glow = frame ? ((frame.t % 8 < 4) ? '#88ff88' : '#aaffaa') : '#88ff88';
-    cyl(ctx, X + 8 * s,  Y + 12 * s, 16 * s, 16 * s, glow, '#ccffcc', '#226622', '#114411');
+    cyl(ctx, X + 8 * s,  Y + 14 * s, 16 * s, 14 * s, glow, '#ccffcc', '#226622', '#114411');
     // hot core dot
-    rect(ctx, X + 12 * s, Y + 16 * s, 8 * s, 8 * s, '#ffffff');
-    px(ctx, X + 13 * s, Y + 17 * s, 6 * s, 1 * s, glow);
-    // radiation symbol
-    px(ctx, X + 15 * s, Y + 19 * s, 2 * s, 2 * s, '#226622');
+    rect(ctx, X + 12 * s, Y + 17 * s, 8 * s, 8 * s, '#ffffff');
+    px(ctx, X + 13 * s, Y + 18 * s, 6 * s, 1 * s, glow);
+    // proper trefoil radiation symbol over the core
+    trefoil(ctx, X + 16 * s, Y + 21 * s, s, '#226622');
     // exhaust port
     rect(ctx, X + 10 * s, Y + 32 * s, 12 * s, 4 * s, '#222233', '#0a0a14');
+    px(ctx, X + 11 * s, Y + 33 * s, 10 * s, 1 * s, '#444466');
     // green nuclear flame
     if (frame && frame.thrusting) {
       flame(ctx, X + 16 * s, Y + 36 * s, 18 * s, 18 * s, frame.t,
             ['#33aa33', '#aaffaa', '#ffffff']);
-      // extra glow halo
       px(ctx, X + 6 * s, Y + 38 * s, 20 * s, 1 * s, '#88ff88');
     }
   }
 
   function drawCardboardFin(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 14 * s;
-    // left fin (jagged cardboard)
+    // left fin (jagged cardboard with corrugation)
     rect(ctx, X + 0 * s,   Y + 8 * s,  6 * s, 6 * s, '#aa7744', '#553311');
     rect(ctx, X + 0 * s,   Y + 4 * s,  4 * s, 4 * s, '#aa7744', '#553311');
     px(ctx, X + 0 * s, Y + 4 * s, 4 * s, 1 * s, '#cc9966');
+    // corrugation lines
+    px(ctx, X + 1 * s, Y + 9 * s, 4 * s, 1 * s, '#996644');
+    px(ctx, X + 1 * s, Y + 11 * s, 4 * s, 1 * s, '#996644');
+    px(ctx, X + 1 * s, Y + 13 * s, 4 * s, 1 * s, '#996644');
+    // FRAGILE stamp suggestion (red horizontal bar)
+    px(ctx, X + 1 * s, Y + 6 * s, 3 * s, 1 * s, '#cc3333');
     // right fin
     rect(ctx, X + 26 * s,  Y + 8 * s,  6 * s, 6 * s, '#aa7744', '#553311');
     rect(ctx, X + 28 * s,  Y + 4 * s,  4 * s, 4 * s, '#aa7744', '#553311');
     px(ctx, X + 28 * s, Y + 4 * s, 4 * s, 1 * s, '#cc9966');
-    // duct tape holding them on
+    px(ctx, X + 27 * s, Y + 9 * s, 4 * s, 1 * s, '#996644');
+    px(ctx, X + 27 * s, Y + 11 * s, 4 * s, 1 * s, '#996644');
+    px(ctx, X + 27 * s, Y + 13 * s, 4 * s, 1 * s, '#996644');
+    px(ctx, X + 28 * s, Y + 6 * s, 3 * s, 1 * s, '#cc3333');
+    // duct tape strips (criss-cross over the joint)
     px(ctx, X + 4 * s,  Y + 6 * s, 2 * s, 6 * s, '#aaaaaa');
     px(ctx, X + 26 * s, Y + 6 * s, 2 * s, 6 * s, '#aaaaaa');
     px(ctx, X + 4 * s,  Y + 7 * s, 2 * s, 1 * s, '#dddddd');
     px(ctx, X + 26 * s, Y + 7 * s, 2 * s, 1 * s, '#dddddd');
-    // center connector
+    // diagonal cross-tape for "heavy reinforcement"
+    px(ctx, X + 5 * s, Y + 9 * s, 1 * s, 3 * s, '#888');
+    px(ctx, X + 6 * s, Y + 8 * s, 1 * s, 3 * s, '#888');
+    // center connector with bolts
     cyl(ctx, X + 12 * s, Y + 8 * s, 8 * s, 6 * s, '#777777', '#999999', '#333333', '#1a1a1a');
+    rivet(ctx, X + 13 * s, Y + 9 * s, s);
+    rivet(ctx, X + 18 * s, Y + 9 * s, s);
+    rivet(ctx, X + 13 * s, Y + 12 * s, s);
+    rivet(ctx, X + 18 * s, Y + 12 * s, s);
   }
 
   function drawSteelFin(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 16 * s;
-    // left fin (swept aerodynamic)
+    // left fin with swept aerodynamic shape
     rect(ctx, X + 0 * s,   Y + 8 * s,  8 * s, 8 * s, '#7799cc', '#223355');
     rect(ctx, X + 0 * s,   Y + 4 * s,  6 * s, 4 * s, '#7799cc', '#223355');
     rect(ctx, X + 0 * s,   Y + 0 * s,  4 * s, 4 * s, '#7799cc', '#223355');
-    // metallic shine
-    px(ctx, X + 1 * s, Y + 4 * s, 1 * s, 10 * s, '#aabbdd');
-    // right fin
+    // metallic shine on leading edge
+    px(ctx, X + 1 * s, Y + 1 * s, 1 * s, 14 * s, '#aabbdd');
+    px(ctx, X + 0 * s, Y + 2 * s, 1 * s, 1 * s, '#cce0ff');
+    // rivets along the leading edge
+    rivet(ctx, X + 2 * s, Y + 4 * s, s);
+    rivet(ctx, X + 2 * s, Y + 8 * s, s);
+    rivet(ctx, X + 2 * s, Y + 12 * s, s);
+    // stencil number on left fin
+    px(ctx, X + 4 * s, Y + 11 * s, 1 * s, 2 * s, '#fff');
+    px(ctx, X + 5 * s, Y + 11 * s, 1 * s, 1 * s, '#fff');
+    // right fin (mirror)
     rect(ctx, X + 24 * s,  Y + 8 * s,  8 * s, 8 * s, '#7799cc', '#223355');
     rect(ctx, X + 26 * s,  Y + 4 * s,  6 * s, 4 * s, '#7799cc', '#223355');
     rect(ctx, X + 28 * s,  Y + 0 * s,  4 * s, 4 * s, '#7799cc', '#223355');
-    px(ctx, X + 30 * s, Y + 4 * s, 1 * s, 10 * s, '#aabbdd');
-    // center connector with bolts
+    px(ctx, X + 30 * s, Y + 1 * s, 1 * s, 14 * s, '#aabbdd');
+    px(ctx, X + 31 * s, Y + 2 * s, 1 * s, 1 * s, '#cce0ff');
+    rivet(ctx, X + 28 * s, Y + 4 * s, s);
+    rivet(ctx, X + 28 * s, Y + 8 * s, s);
+    rivet(ctx, X + 28 * s, Y + 12 * s, s);
+    px(ctx, X + 26 * s, Y + 11 * s, 1 * s, 2 * s, '#fff');
+    px(ctx, X + 27 * s, Y + 11 * s, 1 * s, 1 * s, '#fff');
+    // center connector with bolted bracket
     cyl(ctx, X + 12 * s,  Y + 8 * s,  8 * s, 8 * s, '#aaaabb', '#ccccdd', '#444466', '#1a1a22');
-    px(ctx, X + 14 * s, Y + 10 * s, 1 * s, 1 * s, '#222244');
-    px(ctx, X + 18 * s, Y + 10 * s, 1 * s, 1 * s, '#222244');
-    px(ctx, X + 14 * s, Y + 14 * s, 1 * s, 1 * s, '#222244');
-    px(ctx, X + 18 * s, Y + 14 * s, 1 * s, 1 * s, '#222244');
+    bolt(ctx, X + 13 * s, Y + 10 * s, s);
+    bolt(ctx, X + 17 * s, Y + 10 * s, s);
+    bolt(ctx, X + 13 * s, Y + 13 * s, s);
+    bolt(ctx, X + 17 * s, Y + 13 * s, s);
+    // bracket panel highlight
+    px(ctx, X + 12 * s, Y + 8 * s, 8 * s, 1 * s, '#ddddee');
   }
 
   // ---- catalog --------------------------------------------------------------
