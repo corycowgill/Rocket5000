@@ -41,6 +41,9 @@
     satellites: [],   // drifting decoration in space
     contrail: [],     // recent rocket positions for the trail line
     comets: [],       // decorative meteors at high altitude
+    balloons: [],     // hot air balloons at low-mid altitude
+    npcRockets: [],   // ambient rockets in the distance
+    raindrops: [],    // visible rain during THUNDERSTORM
     msg: '',
     msgT: 0,
     seed: 0,
@@ -85,6 +88,9 @@
     F.satellites = [];
     F.contrail = [];
     F.comets = [];
+    F.balloons = [];
+    F.npcRockets = [];
+    F.raindrops = [];
     F.msg = 'IGNITION';
     F.msgT = 1.5;
 
@@ -189,6 +195,9 @@
       rumble: 0,
       contrailT: 0,
       launchShockwaveDone: false,
+      gimbal: 0,            // visual thrust-vector gimbal (radians)
+      sonicBoomDone: false, // expanding ring on Mach crossing
+      met: 0,               // mission elapsed time (seconds)
     };
   }
 
@@ -703,11 +712,39 @@
     });
     F.droppedTanks = F.droppedTanks.filter(d => d.life > 0 && (d.y - F.sim.y) > -80);
 
+    // mission elapsed time clock
+    s.met += dt;
+
+    // gimbal: tilt visible thrust vector opposite the steering input
+    const steerLcheck = F.keys.left || F.touch.left;
+    const steerRcheck = F.keys.right || F.touch.right;
+    const gimbalTarget = steerLcheck ? -0.28 : (steerRcheck ? 0.28 : 0);
+    s.gimbal += (gimbalTarget - s.gimbal) * Math.min(1, dt * 14);
+
+    // sonic boom — once when crossing ~340 m/s in atmosphere
+    const altKmSonic = s.y / 1000;
+    const airDensSonic = Math.max(0, 1 - altKmSonic / 80);
+    const speedTotal = Math.sqrt(s.vx * s.vx + s.vy * s.vy);
+    if (!s.sonicBoomDone && speedTotal > 340 && airDensSonic > 0.1) {
+      s.sonicBoomDone = true;
+      spawnSonicBoom(s);
+      flashMsg('MACH 1');
+    }
+
     // satellites drift across at high altitude
     updateSatellites(dt, F.sim);
 
     // decorative comets streak through high-altitude views
     updateComets(dt, F.sim);
+
+    // hot air balloons drift at 1.5k-8k ft
+    updateBalloons(dt, F.sim);
+
+    // ambient NPC rockets cross the sky
+    updateNpcRockets(dt, F.sim);
+
+    // rain droplets during THUNDERSTORM weather while in atmosphere
+    updateRain(dt, F.sim);
 
     // contrail: stamp rocket position every ~50ms while burning, then age out
     if (s.throttle > 0.1 && s.fuel > 0) {
@@ -730,7 +767,9 @@
 
     // exhaust particles — layered: hot core sparks + outer glow + smoke trail
     if (s.throttle > 0.1 && s.fuel > 0 && burningEngines > 0) {
-      const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
+      // gimbal angles the exhaust away from straight-down so steering reads
+      const exitAngle = s.angle + s.gimbal;
+      const ex = -Math.sin(exitAngle), ey = -Math.cos(exitAngle);
       const colorPart = Parts.byId(s.engines.find(e => e.alive)?.pid);
       const flame = colorPart?.flameColor || '#ffcc33';
       // hot sparks
@@ -1053,6 +1092,15 @@
     // mountains stacked in front of horizon
     if (altFt < 5500) drawMountains(ctx, W, H, altFt, s.x);
 
+    // hot air balloons floating at low-mid altitude
+    drawBalloons(ctx, worldToScreen);
+
+    // ambient NPC rockets crossing in the distance
+    drawNpcRockets(ctx, worldToScreen);
+
+    // rain during thunderstorm
+    drawRain(ctx, W, H);
+
     // wind streaks blow across the atmosphere
     drawWindStreaks(ctx, W, H, altFt, s.modifier, s.time);
 
@@ -1102,6 +1150,9 @@
     // engine glow halo — additive blend, sits behind rocket but in front
     // of exhaust particles so the trail glows along its core
     drawEngineGlow(ctx, s, worldToScreen);
+
+    // mach diamonds (visible shock pattern in supersonic exhaust at altitude)
+    drawMachDiamonds(ctx, s, worldToScreen);
 
     // re-entry plasma envelope: when falling fast through atmosphere
     drawPlasma(ctx, s, worldToScreen);
@@ -1987,6 +2038,225 @@
     }
   }
 
+  // ---- Mach diamonds in exhaust ---------------------------------------------
+  // The visible repeating bright/dark pattern in a supersonic rocket plume.
+  // Only meaningful in atmosphere with high throttle.
+  function drawMachDiamonds(ctx, sim, worldToScreen) {
+    if (sim.throttle < 0.5 || sim.fuel <= 0) return;
+    const altKm = sim.y / 1000;
+    const air = Math.max(0, 1 - altKm / 30);
+    if (air < 0.15) return;
+
+    const ex = -Math.sin(sim.angle + sim.gimbal);
+    const ey = -Math.cos(sim.angle + sim.gimbal);
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 4; i++) {
+      const dist = 1.6 + i * 0.9;
+      const wob = Math.sin(sim.time * 22 + i * 1.2) * 0.15;
+      const [sx, sy] = worldToScreen(sim.x + ex * (dist + wob), sim.y + ey * (dist + wob));
+      const sz = 6 + i * 2;
+      // bright core diamond
+      ctx.fillStyle = 'rgba(255, 250, 200,' + (0.55 * sim.throttle * air) + ')';
+      ctx.fillRect(sx - sz / 2, sy - 1, sz, 2);
+      ctx.fillStyle = 'rgba(255, 230, 180,' + (0.4 * sim.throttle * air) + ')';
+      ctx.fillRect(sx - sz / 4, sy - 2, sz / 2, 4);
+      // outer halo
+      ctx.fillStyle = 'rgba(255, 200, 110,' + (0.22 * sim.throttle * air) + ')';
+      ctx.fillRect(sx - sz, sy - 3, sz * 2, 6);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- Sonic boom shockwave -------------------------------------------------
+  function spawnSonicBoom(s) {
+    // expanding ring of bright particles
+    for (let i = 0; i < 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const sp = 28;
+      F.particles.push({
+        x: s.x, y: s.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 0.6,
+        color: '#ffffff',
+        size: 3,
+      });
+    }
+    // soft halo wave
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      const sp = 14;
+      F.particles.push({
+        x: s.x, y: s.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 1.2,
+        color: '#cce0ff',
+        size: 5,
+        smoke: true,
+      });
+    }
+    s.shake = Math.max(s.shake || 0, 0.5);
+  }
+
+  // ---- Hot air balloons -----------------------------------------------------
+  function updateBalloons(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    if (altFt > 1000 && altFt < 8000 && F.balloons.length < 2) {
+      if (Math.random() < dt * 0.10) {
+        const fromRight = Math.random() < 0.5;
+        const palettes = [
+          { skin: '#cc3333', stripe: '#ffcc33' },
+          { skin: '#3366cc', stripe: '#ffffff' },
+          { skin: '#33aa66', stripe: '#ffaa44' },
+          { skin: '#ee99cc', stripe: '#cc3399' },
+        ];
+        F.balloons.push({
+          x: s.x + (fromRight ? 50 : -50),
+          y: s.y + (Math.random() - 0.5) * 30,
+          vx: (fromRight ? -1 : 1) * (1.5 + Math.random() * 1.5),
+          vy: (Math.random() - 0.5) * 0.4,
+          t: 0,
+          palette: palettes[Math.floor(Math.random() * palettes.length)],
+        });
+      }
+    }
+    F.balloons.forEach(b => {
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.t += dt;
+    });
+    F.balloons = F.balloons.filter(b => Math.abs(b.x - s.x) < 80 && Math.abs(b.y - s.y) < 60);
+  }
+
+  function drawBalloons(ctx, worldToScreen) {
+    F.balloons.forEach(b => {
+      const [sx, sy] = worldToScreen(b.x, b.y);
+      // sway
+      const sway = Math.sin(b.t * 1.5) * 1;
+      const cx = sx + sway, cy = sy;
+      // balloon — pear shape with stripes
+      ctx.fillStyle = b.palette.skin;
+      ctx.fillRect(cx - 6, cy - 10, 12, 8);
+      ctx.fillRect(cx - 5, cy - 12, 10, 2);
+      ctx.fillRect(cx - 4, cy - 14, 8, 2);
+      ctx.fillRect(cx - 5, cy - 2, 10, 1);
+      // vertical stripe
+      ctx.fillStyle = b.palette.stripe;
+      ctx.fillRect(cx - 1, cy - 14, 2, 12);
+      // gondola basket
+      ctx.fillStyle = '#aa7744';
+      ctx.fillRect(cx - 3, cy + 2, 6, 3);
+      ctx.fillStyle = '#553311';
+      ctx.fillRect(cx - 3, cy + 5, 6, 1);
+      // ropes
+      ctx.fillStyle = '#222';
+      ctx.fillRect(cx - 4, cy - 1, 1, 3);
+      ctx.fillRect(cx + 3, cy - 1, 1, 3);
+      // highlight on balloon
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(cx - 5, cy - 12, 1, 6);
+    });
+  }
+
+  // ---- Ambient NPC rockets at distance --------------------------------------
+  function updateNpcRockets(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    if (F.npcRockets.length < 1 && altFt < 200000) {
+      if (Math.random() < dt * 0.04) {
+        // spawn from off-screen, moving up at an angle
+        const fromRight = Math.random() < 0.5;
+        F.npcRockets.push({
+          x: s.x + (fromRight ? 70 : -70),
+          y: s.y + (Math.random() - 0.5) * 60,
+          vx: (fromRight ? -1 : 1) * 6,
+          vy: 18 + Math.random() * 8,
+          trail: [],
+          t: 0,
+        });
+      }
+    }
+    F.npcRockets.forEach(r => {
+      r.x += r.vx * dt;
+      r.y += r.vy * dt;
+      r.t += dt;
+      r.trail.push({ x: r.x, y: r.y });
+      if (r.trail.length > 16) r.trail.shift();
+    });
+    F.npcRockets = F.npcRockets.filter(r => Math.abs(r.x - s.x) < 100 && Math.abs(r.y - s.y) < 120);
+  }
+
+  function drawNpcRockets(ctx, worldToScreen) {
+    F.npcRockets.forEach(r => {
+      // exhaust trail
+      r.trail.forEach((p, i) => {
+        const fade = i / r.trail.length;
+        const [tx, ty] = worldToScreen(p.x, p.y);
+        ctx.fillStyle = 'rgba(255, 200, 120,' + (fade * 0.5) + ')';
+        ctx.fillRect(tx - 1, ty - 1, 2, 2);
+      });
+      // tiny rocket sprite
+      const [sx, sy] = worldToScreen(r.x, r.y);
+      const ang = Math.atan2(-r.vy, r.vx) - Math.PI / 2;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(ang);
+      // body
+      ctx.fillStyle = '#dddddd';
+      ctx.fillRect(-2, -4, 4, 8);
+      // nose
+      ctx.fillStyle = '#cc3333';
+      ctx.fillRect(-1, -6, 2, 2);
+      // fins
+      ctx.fillStyle = '#888';
+      ctx.fillRect(-3, 3, 1, 2);
+      ctx.fillRect(2, 3, 1, 2);
+      // flame
+      const flick = (r.t * 12 | 0) % 2;
+      ctx.fillStyle = '#ffcc33';
+      ctx.fillRect(-1, 4, 2, 3 + flick);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 5, 1, 1 + flick);
+      ctx.restore();
+    });
+  }
+
+  // ---- Storm rain -----------------------------------------------------------
+  function updateRain(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    const isStorm = s.modifier && (s.modifier.id === 'storm');
+    if (!isStorm || altFt > 18000) {
+      F.raindrops = []; return;
+    }
+    const W = F.canvas ? (F.canvas.clientWidth || 800) : 800;
+    const H = F.canvas ? (F.canvas.clientHeight || 600) : 600;
+    while (F.raindrops.length < 32) {
+      F.raindrops.push({
+        x: Math.random() * W,
+        y: -10 + Math.random() * H,
+        vy: 600 + Math.random() * 200, // px/s in screen-space
+        len: 6 + Math.random() * 6,
+      });
+    }
+    F.raindrops.forEach(d => {
+      d.y += d.vy * dt;
+    });
+  }
+
+  function drawRain(ctx, W, H) {
+    if (F.raindrops.length === 0) return;
+    ctx.fillStyle = 'rgba(180, 200, 240, 0.5)';
+    F.raindrops.forEach(d => {
+      // wrap + relocate when offscreen
+      if (d.y > H + 20) {
+        d.y = -10;
+        d.x = Math.random() * W;
+      }
+      const x = d.x % W;
+      ctx.fillRect(x, d.y, 1, d.len);
+    });
+  }
+
   // ---- Engine glow halo -----------------------------------------------------
   function drawEngineGlow(ctx, sim, worldToScreen) {
     if (sim.throttle < 0.1 || sim.fuel <= 0) return;
@@ -1996,8 +2266,9 @@
     const flame = colorPart?.flameColor || '#ffcc33';
     const rgb = hexToRgb(flame);
 
-    // glow center: 0.5m below rocket along thrust axis
-    const ex = -Math.sin(sim.angle), ey = -Math.cos(sim.angle);
+    // glow center: 0.5m below rocket along (gimbaled) thrust axis
+    const ex = -Math.sin(sim.angle + (sim.gimbal || 0));
+    const ey = -Math.cos(sim.angle + (sim.gimbal || 0));
     const [gx, gy] = worldToScreen(sim.x + ex * 0.5, sim.y + ey * 0.5);
 
     ctx.globalCompositeOperation = 'lighter';
@@ -2339,6 +2610,12 @@
   // ---- HUD ------------------------------------------------------------------
   function updateHud() {
     const s = F.sim;
+    // MET T+mm:ss
+    const totalSec = Math.floor(s.met || 0);
+    const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+    const ss = String(totalSec % 60).padStart(2, '0');
+    const metEl = $('#hud-met');
+    if (metEl) metEl.textContent = 'T+' + mm + ':' + ss;
     $('#hud-alt').textContent = formatFt(Math.floor(s.maxAltitudeM * M_TO_FT)) + ' ft';
     $('#hud-vel').textContent = Math.floor(s.vy * M_TO_FT) + '';
     $('#hud-fuel').textContent = Math.floor((s.fuel / Math.max(1, s.maxFuel)) * 100) + '%';
