@@ -425,7 +425,9 @@
         stability += f.stability;
       }
     }
-    const twr = mass > 0 ? thrust / (mass * 9.81 / 1000) : 0;
+    const fuelMass = capacity * 0.05;
+    const wetMass = mass + fuelMass;
+    const twr = wetMass > 0 ? (thrust * 12) / (wetMass * 9.8) : 0;
     const stabPct = Math.min(100, Math.round(stability));
     const jankAvg = engineCount > 0 ? Math.round(jank / engineCount) : 0;
     return { mass, thrust, capacity, stability: stabPct, jank: jankAvg, hullBonus, engineCount, fuelCount, bodyCount, twr };
