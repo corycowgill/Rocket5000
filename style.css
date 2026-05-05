@@ -842,6 +842,21 @@ canvas {
   box-shadow: 2px 2px 0 var(--shadow);
 }
 .hud-combo.show { opacity: 1; }
+.hud-pickups {
+  background: var(--dsky-bg);
+  border: 2px solid var(--dsky-rim);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: var(--dsky-amber);
+  text-shadow: 0 0 4px rgba(255,177,42,0.5);
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 2px 2px 0 var(--shadow);
+  pointer-events: none;
+}
+.hud-pickups.show { opacity: 1; }
 .touch-btn {
   font-family: inherit;
   font-weight: 900;

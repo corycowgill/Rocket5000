@@ -150,6 +150,10 @@
     scrapEarned += result.milestoneBonus || 0;
     scrapEarned += result.comboBonus || 0;
 
+    // pickups collected during flight
+    scrapEarned += result.pickupScrap || 0;
+    dataEarned  += result.pickupData  || 0;
+
     // weather modifier multiplier on the whole take
     if (result.modifierScrapMul && result.modifierScrapMul !== 1) {
       scrapEarned = Math.floor(scrapEarned * result.modifierScrapMul);
@@ -239,6 +243,7 @@
     if (result.stageCount) list.innerHTML += `<li><span>Stages dropped</span><b>${result.stageCount}</b></li>`;
     if (result.milestoneBonus) list.innerHTML += `<li><span>Milestones</span><b>+${result.milestoneBonus}</b></li>`;
     if (result.comboBonus) list.innerHTML += `<li><span>Pilot bonus</span><b>+${result.comboBonus}</b></li>`;
+    if (result.pickupCount) list.innerHTML += `<li><span>Pickups (${result.pickupCount})</span><b>+${result.pickupScrap || 0} sc · +${result.pickupData || 0} dt</b></li>`;
     if (rewards.scrapEarned) list.innerHTML += `<li><span>Scrap total</span><b>+${rewards.scrapEarned}</b></li>`;
     if (rewards.dataEarned) list.innerHTML += `<li><span>Data</span><b>+${rewards.dataEarned}</b></li>`;
     if (result.success) list.innerHTML += `<li class="unlock"><span>Achievement</span><b>MOON LANDED</b></li>`;

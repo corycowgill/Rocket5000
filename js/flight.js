@@ -44,6 +44,7 @@
     balloons: [],     // hot air balloons at low-mid altitude
     npcRockets: [],   // ambient rockets in the distance
     raindrops: [],    // visible rain during THUNDERSTORM
+    pickups: [],      // collectible items floating in flight
     msg: '',
     msgT: 0,
     seed: 0,
@@ -91,6 +92,7 @@
     F.balloons = [];
     F.npcRockets = [];
     F.raindrops = [];
+    F.pickups = [];
     F.msg = 'IGNITION';
     F.msgT = 1.5;
 
@@ -198,6 +200,9 @@
       gimbal: 0,            // visual thrust-vector gimbal (radians)
       sonicBoomDone: false, // expanding ring on Mach crossing
       met: 0,               // mission elapsed time (seconds)
+      pickupScrap: 0,       // scrap collected from pickups this run
+      pickupData: 0,        // data collected from pickups this run
+      pickupCount: 0,       // total pickups grabbed
     };
   }
 
@@ -443,6 +448,9 @@
       milestoneBonus: F.sim.milestoneScrapBonus || 0,
       comboBonus: F.sim.comboBonus || 0,
       stageCount: F.sim.stageCount || 0,
+      pickupScrap: F.sim.pickupScrap || 0,
+      pickupData: F.sim.pickupData || 0,
+      pickupCount: F.sim.pickupCount || 0,
       modifierId: F.sim.modifier ? F.sim.modifier.id : 'calm',
       modifierLabel: F.sim.modifier ? F.sim.modifier.label : 'CALM',
       modifierScrapMul: F.sim.modifier ? F.sim.modifier.scrapMul : 1.0,
@@ -745,6 +753,9 @@
 
     // rain droplets during THUNDERSTORM weather while in atmosphere
     updateRain(dt, F.sim);
+
+    // collectible pickups: reason to maneuver mid-flight
+    updatePickups(dt, F.sim);
 
     // contrail: stamp rocket position every ~50ms while burning, then age out
     if (s.throttle > 0.1 && s.fuel > 0) {
@@ -1100,6 +1111,10 @@
 
     // rain during thunderstorm
     drawRain(ctx, W, H);
+
+    // pickups (collectibles) — drawn between hazards and rocket so they
+    // visually pop above the world but the rocket overlaps when grabbing
+    drawPickups(ctx, worldToScreen);
 
     // wind streaks blow across the atmosphere
     drawWindStreaks(ctx, W, H, altFt, s.modifier, s.time);
@@ -2257,6 +2272,210 @@
     });
   }
 
+  // ---- Pickups (in-flight collectibles) -------------------------------------
+  // 5 types weighted by rarity. They float into view ahead of the rocket and
+  // gently steer toward it within an attraction radius so the player has a
+  // forgiving but skill-rewarding incentive to maneuver mid-flight.
+  const PICKUP_TYPES = ['scrap','scrap','scrap','scrap','fuel','fuel','repair','data','data','star'];
+  const PICKUP_LABELS = {
+    scrap:  '+50 SCRAP',
+    fuel:   'FUEL +20%',
+    repair: 'HULL +30',
+    data:   '+3 DATA',
+    star:   'STAR +200',
+  };
+  const PICKUP_COLORS = {
+    scrap:  ['#aaaaaa', '#ffffff', '#444444'],
+    fuel:   ['#ff8833', '#ffeeaa', '#552200'],
+    repair: ['#cc3333', '#ffeeee', '#552211'],
+    data:   ['#3399cc', '#cce0ff', '#114466'],
+    star:   ['#ffcc33', '#ffffff', '#664400'],
+  };
+
+  function updatePickups(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    // pickups don't spawn on the pad — give the player a moment to launch
+    if (altFt > 200 && F.pickups.length < 4) {
+      // higher spawn rate higher up to reward exploration
+      const rate = 0.55 + Math.min(1.0, altFt / 100000) * 0.4;
+      if (Math.random() < dt * rate) {
+        spawnPickup(s);
+      }
+    }
+
+    F.pickups.forEach(p => {
+      p.t += dt;
+      // gentle drift downward so they pass by even stationary rockets
+      p.x += p.vx * dt;
+      p.y += (p.vy + s.vy * 0.05) * dt;
+
+      // attraction within radius — eases toward rocket
+      const dx = s.x - p.x, dy = s.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < 36 && d2 > 0.01) {
+        const d = Math.sqrt(d2);
+        const pull = 14 * (1 - d / 6);
+        p.vx += (dx / d) * pull * dt;
+        p.vy += (dy / d) * pull * dt;
+      } else {
+        // mild damping when out of attraction range
+        p.vx *= Math.pow(0.92, dt * 60);
+        p.vy *= Math.pow(0.96, dt * 60);
+      }
+
+      // collected when close enough
+      if (d2 < 1.6 && !p.collected) {
+        collectPickup(p, s);
+        p.collected = true;
+      }
+    });
+
+    // GC: collected, or far past the rocket
+    F.pickups = F.pickups.filter(p =>
+      !p.collected && (s.y - p.y) < 80 && Math.abs(p.x - s.x) < 80
+    );
+  }
+
+  function spawnPickup(s) {
+    const type = PICKUP_TYPES[Math.floor(Math.random() * PICKUP_TYPES.length)];
+    // spawn ahead of the rocket along its velocity vector with some scatter
+    const ahead = 32 + Math.random() * 18;
+    const lateral = (Math.random() - 0.5) * 22;
+    F.pickups.push({
+      type,
+      x: s.x + lateral,
+      y: s.y + ahead,
+      vx: 0, vy: -0.4 - Math.random() * 0.3,
+      t: Math.random() * Math.PI * 2,
+      collected: false,
+    });
+  }
+
+  function collectPickup(p, s) {
+    if (p.type === 'scrap')  s.pickupScrap += 50;
+    if (p.type === 'fuel') {
+      const add = s.maxFuel * 0.20;
+      s.fuel = Math.min(s.maxFuel, s.fuel + add);
+    }
+    if (p.type === 'repair') {
+      s.hull = Math.min(s.maxHull, s.hull + 30);
+    }
+    if (p.type === 'data')   s.pickupData += 3;
+    if (p.type === 'star') {
+      s.pickupScrap += 200;
+      s.flash = Math.max(s.flash || 0, 0.5);
+      s.flashColor = '#ffcc33';
+    }
+    s.pickupCount++;
+    flashMsg(PICKUP_LABELS[p.type]);
+    spawnPickupBurst(p);
+    Sfx.play('snap');
+  }
+
+  function spawnPickupBurst(p) {
+    const colors = PICKUP_COLORS[p.type];
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const sp = 6 + Math.random() * 4;
+      F.particles.push({
+        x: p.x, y: p.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 0.5 + Math.random() * 0.3,
+        color: i % 2 === 0 ? colors[1] : colors[0],
+        size: 2 + Math.random() * 2,
+      });
+    }
+  }
+
+  function drawPickups(ctx, worldToScreen) {
+    F.pickups.forEach(p => {
+      const [sx, sy] = worldToScreen(p.x, p.y);
+      const bob = Math.sin(p.t * 4) * 2;
+      const pulse = (Math.sin(p.t * 5) + 1) * 0.5;
+      const colors = PICKUP_COLORS[p.type];
+
+      // outer glow halo — color-coded
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = colors[0] + 'aa'.replace(/.{2}/, hex(0.18 + pulse * 0.18));
+      ctx.fillRect(sx - 14, sy + bob - 14, 28, 28);
+      ctx.globalCompositeOperation = 'source-over';
+
+      // sprite per type
+      const cx = sx, cy = sy + bob;
+      if (p.type === 'scrap') {
+        // gray cube with bolt indent
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(cx - 5, cy - 5, 10, 10);
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 5, cy - 5, 10, 1);
+        ctx.fillRect(cx - 5, cy - 5, 1, 10);
+        ctx.fillStyle = colors[2];
+        ctx.fillRect(cx + 4, cy - 5, 1, 10);
+        ctx.fillRect(cx - 5, cy + 4, 10, 1);
+        ctx.fillStyle = colors[2];
+        ctx.fillRect(cx - 1, cy - 1, 2, 2);
+      } else if (p.type === 'fuel') {
+        // canister with nozzle and "F"
+        ctx.fillStyle = colors[2];
+        ctx.fillRect(cx - 1, cy - 7, 2, 2);
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(cx - 5, cy - 5, 10, 10);
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 5, cy - 5, 10, 1);
+        ctx.fillStyle = colors[2];
+        ctx.fillRect(cx - 5, cy + 4, 10, 1);
+        // F letter
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 2, cy - 3, 1, 6);
+        ctx.fillRect(cx - 2, cy - 3, 4, 1);
+        ctx.fillRect(cx - 2, cy, 3, 1);
+      } else if (p.type === 'repair') {
+        // red square with white plus
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(cx - 5, cy - 5, 10, 10);
+        ctx.fillStyle = colors[2];
+        ctx.fillRect(cx - 5, cy + 4, 10, 1);
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 1, cy - 4, 2, 8);
+        ctx.fillRect(cx - 4, cy - 1, 8, 2);
+      } else if (p.type === 'data') {
+        // diamond crystal
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(cx - 4, cy, 8, 1);
+        ctx.fillRect(cx - 3, cy - 1, 6, 1);
+        ctx.fillRect(cx - 2, cy - 2, 4, 1);
+        ctx.fillRect(cx - 1, cy - 3, 2, 1);
+        ctx.fillRect(cx - 3, cy + 1, 6, 1);
+        ctx.fillRect(cx - 2, cy + 2, 4, 1);
+        ctx.fillRect(cx - 1, cy + 3, 2, 1);
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 1, cy - 1, 2, 2);
+      } else if (p.type === 'star') {
+        // 4-point gold star with white core
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(cx - 1, cy - 6, 2, 12);
+        ctx.fillRect(cx - 6, cy - 1, 12, 2);
+        ctx.fillRect(cx - 4, cy - 4, 8, 8);
+        // diagonal stars
+        ctx.fillRect(cx - 3, cy - 3, 1, 1);
+        ctx.fillRect(cx + 2, cy - 3, 1, 1);
+        ctx.fillRect(cx - 3, cy + 2, 1, 1);
+        ctx.fillRect(cx + 2, cy + 2, 1, 1);
+        ctx.fillStyle = colors[1];
+        ctx.fillRect(cx - 1, cy - 1, 2, 2);
+      }
+
+      // hint indicator if pickup is offscreen-top (rocket falling, missed it)
+      // also, distance-fade so far pickups read as smaller
+    });
+  }
+
+  function hex(a) {
+    const v = Math.max(0, Math.min(255, Math.round(a * 255)));
+    return v.toString(16).padStart(2, '0');
+  }
+
   // ---- Engine glow halo -----------------------------------------------------
   function drawEngineGlow(ctx, sim, worldToScreen) {
     if (sim.throttle < 0.1 || sim.fuel <= 0) return;
@@ -2643,6 +2862,17 @@
       comboEl.classList.add('show');
     } else {
       comboEl.classList.remove('show');
+    }
+
+    // pickups counter
+    const puEl = $('#hud-pickups');
+    if (puEl) {
+      if (s.pickupCount > 0) {
+        puEl.textContent = '◇ ' + s.pickupCount + '  +' + s.pickupScrap + ' SC';
+        puEl.classList.add('show');
+      } else {
+        puEl.classList.remove('show');
+      }
     }
 
     // stage button enable/disable
