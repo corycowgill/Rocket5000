@@ -39,6 +39,8 @@
     hazards: [],
     droppedTanks: [], // tumbling jettisoned parts (proper sprites)
     satellites: [],   // drifting decoration in space
+    contrail: [],     // recent rocket positions for the trail line
+    comets: [],       // decorative meteors at high altitude
     msg: '',
     msgT: 0,
     seed: 0,
@@ -81,6 +83,8 @@
     F.hazards = [];
     F.droppedTanks = [];
     F.satellites = [];
+    F.contrail = [];
+    F.comets = [];
     F.msg = 'IGNITION';
     F.msgT = 1.5;
 
@@ -697,6 +701,28 @@
     // satellites drift across at high altitude
     updateSatellites(dt, F.sim);
 
+    // decorative comets streak through high-altitude views
+    updateComets(dt, F.sim);
+
+    // contrail: stamp rocket position every ~50ms while burning, then age out
+    if (s.throttle > 0.1 && s.fuel > 0) {
+      s.contrailT = (s.contrailT || 0) + dt;
+      if (s.contrailT > 0.05) {
+        F.contrail.push({ x: s.x, y: s.y, t: 0, atmosphere: s.y / 1000 < 25 });
+        s.contrailT = 0;
+      }
+    }
+    F.contrail.forEach(p => p.t += dt);
+    F.contrail = F.contrail.filter(p => p.t < 6);
+
+    // first-ignition launch shockwave: dust + ring once at liftoff
+    const altFtNow = s.y * M_TO_FT;
+    if (!s.launchShockwaveDone && s.throttle > 0.5 && altFtNow < 60 && s.fuel > 0) {
+      s.launchShockwaveDone = true;
+      spawnLaunchShockwave(s);
+      s.shake = Math.max(s.shake || 0, 0.7);
+    }
+
     // exhaust particles — layered: hot core sparks + outer glow + smoke trail
     if (s.throttle > 0.1 && s.fuel > 0 && burningEngines > 0) {
       const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
@@ -1058,6 +1084,13 @@
     // satellites drifting through space (behind hazards & rocket)
     drawSatellites(ctx, W, H, worldToScreen);
 
+    // decorative comets in space
+    drawComets(ctx, worldToScreen);
+
+    // contrail trail behind the rocket — drawn before everything else
+    // in front of the camera so it appears under exhaust + rocket
+    drawContrail(ctx, worldToScreen);
+
     // dropped fuel-tank sprites tumbling away
     F.droppedTanks.forEach(d => drawDroppedTank(ctx, d, worldToScreen));
 
@@ -1078,6 +1111,16 @@
     // launch gantry + pad (visible while low)
     if (altFt < 1200) {
       drawGantry(ctx, W, H, altFt, worldToScreen);
+    }
+
+    // crash crater scar (after impact)
+    drawCrater(ctx, s, worldToScreen);
+
+    // cloud passthrough fog — opacity based on altitude vs cloud bands
+    const fog = cloudFogAt(altFt);
+    if (fog > 0.02) {
+      ctx.fillStyle = 'rgba(245, 248, 252,' + fog + ')';
+      ctx.fillRect(0, 0, W, H);
     }
 
     // altitude tick marks on the right edge
@@ -1629,6 +1672,149 @@
     ctx.restore();
   }
 
+  // ---- Contrail trail behind rocket -----------------------------------------
+  function drawContrail(ctx, worldToScreen) {
+    const list = F.contrail;
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      const [sx, sy] = worldToScreen(p.x, p.y);
+      const age = p.t / 6;            // 0 = new, 1 = expired
+      const fade = Math.max(0, 1 - age);
+      const expand = 1 + age * 5;
+      if (p.atmosphere) {
+        // smoky white contrail in atmosphere
+        ctx.fillStyle = 'rgba(225, 230, 240,' + (fade * 0.55) + ')';
+        const sz = 2 + expand * 1.5;
+        ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
+      } else {
+        // exhaust glow trail in space
+        ctx.fillStyle = 'rgba(255, 200, 130,' + (fade * 0.35) + ')';
+        const sz = 2 + expand;
+        ctx.fillRect(sx - sz / 2, sy - sz / 2, sz, sz);
+      }
+    }
+  }
+
+  // ---- Launch shockwave + dust kick-up --------------------------------------
+  function spawnLaunchShockwave(s) {
+    // bright expanding ring of bolts rolling out from the pad
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const sp = 18 + Math.random() * 4;
+      F.particles.push({
+        x: s.x + Math.cos(a) * 0.8,
+        y: 0.5 + Math.sin(a) * 0.4,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * Math.abs(sp) * 0.25 + 1.5,
+        life: 0.9 + Math.random() * 0.4,
+        color: '#ffeecc',
+        size: 4 + Math.random() * 3,
+      });
+    }
+    // big rolling dust cloud at the base
+    for (let i = 0; i < 36; i++) {
+      F.particles.push({
+        x: s.x + (Math.random() - 0.5) * 10,
+        y: 0.3 + Math.random() * 1.0,
+        vx: (Math.random() - 0.5) * 22,
+        vy: 1 + Math.random() * 4,
+        life: 2.0 + Math.random() * 1.2,
+        color: ['#aaa090', '#888070', '#bbb0a0', '#9c9080'][i % 4],
+        size: 6 + Math.random() * 5,
+        smoke: true,
+      });
+    }
+    Sfx.play('launch');
+  }
+
+  // ---- Decorative comets at high altitude -----------------------------------
+  function updateComets(dt, s) {
+    const altFt = s.y * M_TO_FT;
+    if (altFt > 80000 && altFt < 950000 && F.comets.length < 2) {
+      if (Math.random() < dt * 0.10) {
+        F.comets.push({
+          x: s.x + (Math.random() < 0.5 ? -55 : 55),
+          y: s.y + 35 + Math.random() * 35,
+          vx: -45 + Math.random() * 90,
+          vy: -25 - Math.random() * 30,
+          t: 0,
+          life: 2.0,
+          trail: [],
+        });
+      }
+    }
+    F.comets.forEach(c => {
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
+      c.t += dt;
+      c.trail.push({ x: c.x, y: c.y });
+      if (c.trail.length > 14) c.trail.shift();
+    });
+    F.comets = F.comets.filter(c => c.t < c.life);
+  }
+
+  function drawComets(ctx, worldToScreen) {
+    F.comets.forEach(c => {
+      // tail (older positions, fading)
+      c.trail.forEach((p, i) => {
+        const fade = i / c.trail.length;
+        const [sx, sy] = worldToScreen(p.x, p.y);
+        ctx.fillStyle = 'rgba(180, 220, 255,' + (fade * 0.6) + ')';
+        ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      });
+      // head — bright white core + halo
+      const [hx, hy] = worldToScreen(c.x, c.y);
+      ctx.fillStyle = 'rgba(180, 220, 255, 0.4)';
+      ctx.fillRect(hx - 4, hy - 4, 8, 8);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(hx - 1, hy - 1, 3, 3);
+    });
+  }
+
+  // ---- Crash crater (post-impact ground scar) -------------------------------
+  function drawCrater(ctx, sim, worldToScreen) {
+    if (!sim.crashed && !sim.exiting) return;
+    if (sim.y > 8) return; // only visible at ground level
+    const [cx, cy] = worldToScreen(sim.x, 0);
+    // outer scorched ring
+    ctx.fillStyle = '#0a0806';
+    ctx.fillRect(cx - 38, cy + 4, 76, 4);
+    ctx.fillStyle = '#1a1210';
+    ctx.fillRect(cx - 32, cy + 2, 64, 6);
+    ctx.fillStyle = '#3a2018';
+    ctx.fillRect(cx - 26, cy, 52, 5);
+    // smoldering ember at center, pulsing
+    if ((sim.time * 4) % 2 < 1) {
+      ctx.fillStyle = 'rgba(255, 80, 30, 0.85)';
+      ctx.fillRect(cx - 4, cy + 1, 8, 2);
+    } else {
+      ctx.fillStyle = 'rgba(255, 150, 60, 0.7)';
+      ctx.fillRect(cx - 3, cy + 1, 6, 2);
+    }
+    // wisp of smoke rising
+    ctx.fillStyle = 'rgba(120, 120, 130, 0.4)';
+    const drift = Math.sin(sim.time * 2) * 4;
+    ctx.fillRect(cx - 2 + drift, cy - 8, 3, 4);
+    ctx.fillRect(cx - 1 + drift * 1.5, cy - 16, 4, 4);
+  }
+
+  // ---- Cloud passthrough fog ------------------------------------------------
+  function cloudFogAt(altFt) {
+    const bands = [
+      { min: 800,  max: 4500, peak: 0.45 },
+      { min: 1800, max: 6500, peak: 0.30 },
+      { min: 3500, max: 8500, peak: 0.20 },
+    ];
+    let total = 0;
+    bands.forEach(b => {
+      if (altFt > b.min && altFt < b.max) {
+        const t = (altFt - b.min) / (b.max - b.min);
+        total += Math.sin(t * Math.PI) * b.peak;
+      }
+    });
+    return Math.min(0.55, total);
+  }
+
   // ---- Satellites drifting at high altitude ---------------------------------
   function updateSatellites(dt, s) {
     const altFt = s.y * M_TO_FT;
@@ -2076,10 +2262,46 @@
       if (sim.dropped && sim.dropped[i]) return sum;
       const p = Parts.byId(pid); return sum + (p ? p.height : 0);
     }, 0) * STACK_SCALE;
-    ctx.fillStyle = '#cc4444';
+    // shaded nose cone (3 stepped tiers) with vertical highlight
+    ctx.fillStyle = '#aa3333';
     ctx.fillRect(-12, topCursor - 6, 24, 6);
+    ctx.fillStyle = '#cc4444';
+    ctx.fillRect(-12, topCursor - 6, 22, 1);  // top edge highlight
+    ctx.fillStyle = '#882222';
+    ctx.fillRect(10, topCursor - 6, 2, 6);    // right shadow
+    ctx.fillStyle = '#aa3333';
     ctx.fillRect(-8, topCursor - 12, 16, 6);
+    ctx.fillStyle = '#cc4444';
+    ctx.fillRect(-8, topCursor - 12, 14, 1);
+    ctx.fillStyle = '#882222';
+    ctx.fillRect(6, topCursor - 12, 2, 6);
+    ctx.fillStyle = '#aa3333';
     ctx.fillRect(-4, topCursor - 18, 8, 6);
+    ctx.fillStyle = '#cc4444';
+    ctx.fillRect(-4, topCursor - 18, 6, 1);
+    ctx.fillStyle = '#882222';
+    ctx.fillRect(2, topCursor - 18, 2, 6);
+    // tiny tip beacon
+    ctx.fillStyle = '#ffeecc';
+    ctx.fillRect(-1, topCursor - 20, 2, 2);
+
+    // engine light reflection — warm glow on rocket lower body during burn
+    if (thrusting) {
+      const livePid = sim.engines.find(e => e.alive)?.pid;
+      const engPart = livePid ? Parts.byId(livePid) : null;
+      const flameHex = engPart?.flameColor || '#ffcc33';
+      const rgb = hexToRgb(flameHex);
+      ctx.globalCompositeOperation = 'lighter';
+      // bright tight band closest to engine, dimmer wider band higher
+      for (let i = 0; i < 5; i++) {
+        const a = (0.14 - i * 0.025) * sim.throttle;
+        ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + a + ')';
+        const yoff = totalH / 2 - i * 8;
+        const w = 36 - i * 4;
+        ctx.fillRect(-w / 2, yoff - 12, w, 12);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
 
     ctx.restore();
   }
