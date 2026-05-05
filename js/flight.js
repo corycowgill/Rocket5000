@@ -56,6 +56,12 @@
     };
   }
 
+  function hexToRgb(hex) {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    if (!m) return { r: 255, g: 200, b: 80 };
+    return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+  }
+
   // ---- entry ----------------------------------------------------------------
   function enter(Game) {
     F.canvas = $('#flight-canvas');
@@ -569,6 +575,22 @@
       if (s.comboT <= 0) s.combo = 0;
     }
 
+    // weather mood flashes — gentle, atmospheric, not gameplay
+    if (s.modifier && s.modifier.id === 'storm' && altFt > 1500 && altFt < 35000) {
+      // distant lightning sheet flash every few seconds
+      if (Math.random() < dt * 0.18) {
+        s.flash = Math.max(s.flash || 0, 0.45);
+        s.flashColor = '#dde6ff';
+      }
+    }
+    if (s.modifier && s.modifier.id === 'aurora' && altFt > 80000) {
+      // gentle aurora pulse very rarely
+      if (Math.random() < dt * 0.03) {
+        s.flash = Math.max(s.flash || 0, 0.18);
+        s.flashColor = '#88ffcc';
+      }
+    }
+
     // shake + flash decay
     if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 1.6);
     if (s.shake > 0) s.shake = Math.max(0, s.shake - dt * 1.2);
@@ -912,14 +934,22 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
 
+    // sun — visible from atmosphere up to lower space; fades out high
+    drawSun(ctx, W, H, altFt);
+
     // stars (visible above ~10,000 ft, fade in)
     const starAlpha = Math.min(1, Math.max(0, (altFt - 5000) / 30000));
     if (starAlpha > 0) {
       drawStars(ctx, W, H, starAlpha, s);
     }
 
-    // distant clouds (low altitude)
-    if (altFt < 8000) drawClouds(ctx, W, H, altFt, s.x);
+    // aurora bands — only during AURORA weather, fades in at altitude
+    if (s.modifier && s.modifier.id === 'aurora' && altFt > 25000) {
+      drawAurora(ctx, W, H, s, altFt);
+    }
+
+    // distant clouds (low altitude) — multi-layer parallax cumulus
+    if (altFt < 9000) drawClouds(ctx, W, H, altFt, s.x);
 
     // moon (visible above 200k ft, grows)
     if (altFt > 200000) drawMoon(ctx, W, H, altFt);
@@ -957,6 +987,10 @@
       }
     });
 
+    // engine glow halo — additive blend, sits behind rocket but in front
+    // of exhaust particles so the trail glows along its core
+    drawEngineGlow(ctx, s, worldToScreen);
+
     // rocket
     const [rx, ry] = worldToScreen(s.x, s.y);
     drawRocket(ctx, rx, ry, s);
@@ -970,6 +1004,9 @@
     drawAltitudeRail(ctx, W, H, s.y);
 
     ctx.restore();
+
+    // subtle CRT scanline overlay — sells the "mission control monitor" feel
+    drawScanlines(ctx, W, H);
 
     // milestone / damage screen flash on top
     if (s.flash > 0) {
@@ -1148,114 +1185,526 @@
     ctx.globalAlpha = 1;
   }
 
+  // ---- Multi-layer parallax cumulus -----------------------------------------
   function drawClouds(ctx, W, H, altFt, x) {
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    const cloudY = H - 120 + altFt * 0.05;
-    if (cloudY > -40 && cloudY < H + 40) {
-      for (let i = 0; i < 6; i++) {
-        const cx = ((i * 180 - x * 8) % (W + 200) + W + 200) % (W + 200) - 100;
-        ctx.fillRect(cx, cloudY + (i % 2) * 12, 80, 12);
-        ctx.fillRect(cx + 16, cloudY + (i % 2) * 12 - 6, 48, 6);
+    const layers = [
+      { altMin: 0,    altMax: 4500, baseY: H * 0.55, parallax: 8, scale: 1.0, alpha: 0.85 },
+      { altMin: 800,  altMax: 7000, baseY: H * 0.30, parallax: 4, scale: 0.7, alpha: 0.55 },
+      { altMin: 2500, altMax: 9000, baseY: H * 0.10, parallax: 2, scale: 0.5, alpha: 0.40 },
+    ];
+    layers.forEach((layer, li) => {
+      if (altFt < layer.altMin || altFt > layer.altMax) return;
+      const fadeIn  = Math.min(1, (altFt - layer.altMin) / 600);
+      const fadeOut = Math.min(1, (layer.altMax - altFt) / 1200);
+      const fade = Math.max(0, Math.min(fadeIn, fadeOut));
+      // baseline layer Y rises with altitude (clouds fall below us as we climb)
+      const cloudY = layer.baseY + altFt * 0.05;
+      for (let i = 0; i < 5; i++) {
+        const seed = i * 100 + li * 50;
+        const cx = ((seed * 173 - x * layer.parallax) % (W + 360) + W + 360) % (W + 360) - 180;
+        const sc = layer.scale * (0.85 + ((seed * 37) % 30) / 100);
+        drawCumulus(ctx, cx, cloudY + ((seed * 51) % 30) - 15, sc, fade * layer.alpha);
+      }
+    });
+  }
+
+  // pixel-art cumulus: bitmap shape with top-highlight + underside-shadow
+  const CUMULUS_PATTERN = [
+    "0001110011110000",
+    "0011111111111000",
+    "0111111111111110",
+    "1111111111111111",
+    "1111111111111111",
+    "0111111111111110",
+    "0011111111111000",
+    "0000011110000000",
+  ];
+  function drawCumulus(ctx, cx, cy, scale, alpha) {
+    const u = Math.max(2, Math.floor(4 * scale));
+    ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+    for (let y = 0; y < CUMULUS_PATTERN.length; y++) {
+      for (let x = 0; x < CUMULUS_PATTERN[y].length; x++) {
+        if (CUMULUS_PATTERN[y][x] === '1') {
+          ctx.fillRect(cx + x * u, cy + y * u, u, u);
+        }
+      }
+    }
+    // bright top highlight
+    ctx.fillStyle = 'rgba(255,255,255,' + (alpha * 0.5) + ')';
+    for (let x = 0; x < CUMULUS_PATTERN[1].length; x++) {
+      if (CUMULUS_PATTERN[1][x] === '1') ctx.fillRect(cx + x * u, cy + 1 * u, u, u / 2);
+    }
+    // underside shadow (last 2 rows)
+    ctx.fillStyle = 'rgba(140,150,180,' + (alpha * 0.5) + ')';
+    for (let y = CUMULUS_PATTERN.length - 2; y < CUMULUS_PATTERN.length; y++) {
+      for (let x = 0; x < CUMULUS_PATTERN[y].length; x++) {
+        if (CUMULUS_PATTERN[y][x] === '1') {
+          ctx.fillRect(cx + x * u, cy + y * u, u, u);
+        }
       }
     }
   }
 
+  // ---- Aurora curtains (AURORA modifier) ------------------------------------
+  function drawAurora(ctx, W, H, s, altFt) {
+    const fade = Math.min(1, (altFt - 25000) / 80000);
+    ctx.globalCompositeOperation = 'lighter';
+    const colors = [
+      [80, 255, 180],   // green
+      [180, 120, 255],  // violet
+      [120, 200, 255],  // cyan
+    ];
+    for (let band = 0; band < 3; band++) {
+      const yBase = H * (0.18 + band * 0.10);
+      const amp   = 26 + band * 12;
+      const c     = colors[band];
+      const a     = (0.10 + 0.04 * Math.sin(s.time * 0.8 + band)) * fade;
+      ctx.fillStyle = 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')';
+      ctx.beginPath();
+      ctx.moveTo(0, yBase);
+      const phase = s.time * 0.4 + band * 1.7;
+      const step = 6;
+      for (let x = 0; x <= W; x += step) {
+        const y = yBase + Math.sin(x * 0.012 + phase) * amp + Math.sin(x * 0.04 + phase * 2) * (amp * 0.3);
+        ctx.lineTo(x, y);
+      }
+      // bottom fade-out
+      for (let x = W; x >= 0; x -= step) {
+        const yBot = yBase + 80 + Math.sin(x * 0.018 + phase * 0.7) * 10;
+        ctx.lineTo(x, yBot);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ---- Earth horizon + curve from space -------------------------------------
   function drawHorizon(ctx, W, H, altFt, x) {
-    // earth curvature: ground recedes as altitude grows
     const ppm = F.sim.lastPpm || PIXEL_PER_M_BASE;
     const groundY = H * 0.65 + altFt * 0.04 * ppm;
     if (groundY < H + 50) {
+      // ground gradient (warmer on top)
       ctx.fillStyle = '#3a2614';
       ctx.fillRect(0, groundY, W, H - groundY);
       ctx.fillStyle = '#5a3820';
       ctx.fillRect(0, groundY, W, 4);
-      // distant trees
+      ctx.fillStyle = '#7a4828';
+      ctx.fillRect(0, groundY + 4, W, 1);
+      // distant tree silhouettes (parallax with x)
       ctx.fillStyle = '#1a3a1f';
-      for (let i = 0; i < 12; i++) {
-        const tx = ((i * 60 - x * 0.3) % W + W) % W;
-        ctx.fillRect(tx, groundY - 6, 8, 6);
+      for (let i = 0; i < 14; i++) {
+        const tx = ((i * 56 - x * 0.4) % W + W) % W;
+        const th = 5 + ((i * 7) % 4);
+        ctx.fillRect(tx, groundY - th, 6 + ((i * 3) % 3), th);
+      }
+      // distant city lights / windows hint at very low alt
+      if (altFt < 800) {
+        for (let i = 0; i < 6; i++) {
+          const lx = ((i * 130 - x * 0.6) % W + W) % W;
+          ctx.fillStyle = '#ffaa44';
+          ctx.fillRect(lx, groundY - 3, 1, 1);
+          ctx.fillRect(lx + 6, groundY - 5, 1, 1);
+        }
       }
     }
-    if (altFt > 8000) {
-      // earth curve when high
-      const ey = H + 200 - (altFt - 8000) * 0.005;
-      ctx.fillStyle = '#1a4d8f';
-      ctx.beginPath();
-      ctx.arc(W / 2, ey + 800, 800, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#3a8b3a';
-      ctx.beginPath();
-      ctx.arc(W / 2, ey + 800, 780, Math.PI * 1.2, Math.PI * 1.8);
-      ctx.fill();
-    }
+    if (altFt > 8000) drawEarthFromSpace(ctx, W, H, altFt);
   }
 
+  function drawEarthFromSpace(ctx, W, H, altFt) {
+    const fade = Math.min(1, (altFt - 8000) / 60000);
+    const ey = H + 200 - (altFt - 8000) * 0.005;
+    const cy = ey + 800;
+    const r = 800;
+    if (cy - r > H + 80) return;
+
+    // atmospheric blue glow halo
+    ctx.fillStyle = 'rgba(120, 200, 255,' + (0.18 * fade) + ')';
+    ctx.beginPath(); ctx.arc(W / 2, cy, r + 36, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(180, 230, 255,' + (0.22 * fade) + ')';
+    ctx.beginPath(); ctx.arc(W / 2, cy, r + 18, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255,' + (0.25 * fade) + ')';
+    ctx.beginPath(); ctx.arc(W / 2, cy, r + 6, 0, Math.PI * 2); ctx.fill();
+
+    // ocean
+    ctx.fillStyle = '#1a4d8f';
+    ctx.beginPath(); ctx.arc(W / 2, cy, r, 0, Math.PI * 2); ctx.fill();
+    // surface highlight band (sun reflection on the day side)
+    ctx.fillStyle = '#2966a8';
+    ctx.beginPath(); ctx.arc(W / 2, cy, r - 8, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
+
+    // continents — irregular green shapes only on the visible cap
+    const continents = [
+      { x: -240, y: -30, w: 110, h: 22 },
+      { x: -110, y: -8,  w: 70,  h: 16 },
+      { x:   60, y: -22, w: 90,  h: 24 },
+      { x:  220, y: -10, w: 60,  h: 16 },
+      { x: -140, y: 10,  w: 50,  h: 12 },
+      { x:   30, y: 16,  w: 70,  h: 14 },
+    ];
+    continents.forEach(c => {
+      const px = W / 2 + c.x;
+      const py = cy + c.y - r * 0.985;
+      if (py > -10 && py < H) {
+        ctx.fillStyle = '#3a8b3a';
+        ctx.fillRect(px, py, c.w, c.h);
+        // darker inland forests
+        ctx.fillStyle = '#2d6a2d';
+        ctx.fillRect(px + c.w * 0.5, py + c.h * 0.5, c.w * 0.35, c.h * 0.4);
+        // coastal lighter strip
+        ctx.fillStyle = '#5cae5c';
+        ctx.fillRect(px, py, c.w, 1);
+      }
+    });
+
+    // wispy cloud bands
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    ctx.fillRect(W / 2 - 180, cy - r + 40, 70, 3);
+    ctx.fillRect(W / 2 + 30,  cy - r + 28, 90, 3);
+    ctx.fillRect(W / 2 - 60,  cy - r + 70, 60, 2);
+    ctx.fillRect(W / 2 + 140, cy - r + 60, 50, 2);
+
+    // night-side terminator (right edge in shadow)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + r * 0.4, cy - r);
+    ctx.arc(W / 2, cy, r, -Math.PI / 2.6, Math.PI / 2.6);
+    ctx.lineTo(W / 2 + r * 0.4, cy - r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ---- Moon -----------------------------------------------------------------
   function drawMoon(ctx, W, H, altFt) {
     const closeness = Math.min(1, (altFt - 200000) / 800000);
     const r = 30 + closeness * 200;
     const mx = W / 2;
     const my = H * 0.3 - (1 - closeness) * 100;
+
+    // soft glow halo
+    ctx.fillStyle = 'rgba(255, 240, 200, 0.06)';
+    ctx.beginPath(); ctx.arc(mx, my, r + 10, 0, Math.PI * 2); ctx.fill();
+
+    // surface
     ctx.fillStyle = '#dcd6c8';
-    ctx.beginPath();
-    ctx.arc(mx, my, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(mx, my, r, 0, Math.PI * 2); ctx.fill();
+
+    // mare (large dark patches)
     ctx.fillStyle = '#9a9588';
-    [[-r * 0.3, -r * 0.2, r * 0.2], [r * 0.3, r * 0.1, r * 0.15], [-r * 0.1, r * 0.4, r * 0.1]].forEach(([dx, dy, cr]) => {
+    const mare = [
+      [-0.30, -0.18, 0.26], // Imbrium
+      [ 0.22, -0.05, 0.20], // Tranquillitatis
+      [-0.12,  0.36, 0.18], // Nubium
+      [ 0.42,  0.20, 0.14], // Crisium
+    ];
+    mare.forEach(([dx, dy, dr]) => {
       ctx.beginPath();
-      ctx.arc(mx + dx, my + dy, cr, 0, Math.PI * 2);
+      ctx.arc(mx + dx * r, my + dy * r, dr * r, 0, Math.PI * 2);
       ctx.fill();
     });
+
+    // smaller craters scattered across the surface
+    ctx.fillStyle = '#7d7864';
+    const craters = [
+      [-0.55, -0.30, 0.05], [ 0.40, -0.45, 0.04], [ 0.65,  0.10, 0.05],
+      [-0.35,  0.55, 0.05], [ 0.18,  0.62, 0.04], [-0.65,  0.10, 0.04],
+      [ 0.55, -0.18, 0.03], [-0.20, -0.55, 0.04], [-0.05,  0.05, 0.03],
+      [ 0.10, -0.30, 0.03], [-0.55,  0.40, 0.03],
+    ];
+    craters.forEach(([dx, dy, dr]) => {
+      if (dx * dx + dy * dy < 0.85) {
+        ctx.beginPath();
+        ctx.arc(mx + dx * r, my + dy * r, dr * r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+
+    // bright Tycho with ray system at higher closeness
+    if (closeness > 0.25) {
+      const tx = mx + 0.10 * r, ty = my + 0.55 * r;
+      ctx.strokeStyle = 'rgba(255, 248, 224,' + (0.22 * closeness) + ')';
+      ctx.lineWidth = Math.max(1, r * 0.012);
+      for (let a = 0; a < 8; a++) {
+        const angle = (a / 8) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(tx, ty);
+        ctx.lineTo(tx + Math.cos(angle) * r * 0.45, ty + Math.sin(angle) * r * 0.45);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#fff4dc';
+      ctx.beginPath(); ctx.arc(tx, ty, r * 0.05, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // terminator shadow on the far edge
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.moveTo(mx + r * 0.5, my - r);
+    ctx.arc(mx, my, r, -Math.PI / 2.5, Math.PI / 2.5);
+    ctx.lineTo(mx + r * 0.5, my - r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ---- Sun ------------------------------------------------------------------
+  function drawSun(ctx, W, H, altFt) {
+    if (altFt > 90000) return;
+    const fade = Math.min(1, Math.max(0, 1 - altFt / 90000));
+    const sx = W * 0.78;
+    const sy = H * 0.18 + Math.min(20, altFt * 0.0008);
+
+    // wide soft halo
+    ctx.fillStyle = 'rgba(255, 240, 180,' + (0.16 * fade) + ')';
+    ctx.beginPath(); ctx.arc(sx, sy, 70, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255, 230, 150,' + (0.25 * fade) + ')';
+    ctx.beginPath(); ctx.arc(sx, sy, 44, 0, Math.PI * 2); ctx.fill();
+    // body
+    ctx.fillStyle = 'rgba(255, 248, 180,' + (0.85 * fade + 0.15) + ')';
+    ctx.beginPath(); ctx.arc(sx, sy, 22, 0, Math.PI * 2); ctx.fill();
+    // hot core
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sx, sy, 12, 0, Math.PI * 2); ctx.fill();
+    // cross-shaped lensflare while in atmosphere
+    if (altFt < 60000) {
+      ctx.fillStyle = 'rgba(255, 250, 200,' + (0.4 * fade) + ')';
+      ctx.fillRect(sx - 60, sy, 120, 1);
+      ctx.fillRect(sx, sy - 60, 1, 120);
+    }
+  }
+
+  // ---- CRT scanlines --------------------------------------------------------
+  function drawScanlines(ctx, W, H) {
+    ctx.fillStyle = 'rgba(0,0,0,0.07)';
+    for (let y = 0; y < H; y += 3) {
+      ctx.fillRect(0, y, W, 1);
+    }
+    // tiny vignette darkens corners for monitor feel
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(0, 0, W, 6);
+    ctx.fillRect(0, H - 6, W, 6);
+    ctx.fillRect(0, 0, 6, H);
+    ctx.fillRect(W - 6, 0, 6, H);
+  }
+
+  // ---- Engine glow halo -----------------------------------------------------
+  function drawEngineGlow(ctx, sim, worldToScreen) {
+    if (sim.throttle < 0.1 || sim.fuel <= 0) return;
+    const live = sim.engines.find(e => e.alive);
+    if (!live) return;
+    const colorPart = Parts.byId(live.pid);
+    const flame = colorPart?.flameColor || '#ffcc33';
+    const rgb = hexToRgb(flame);
+
+    // glow center: 0.5m below rocket along thrust axis
+    const ex = -Math.sin(sim.angle), ey = -Math.cos(sim.angle);
+    const [gx, gy] = worldToScreen(sim.x + ex * 0.5, sim.y + ey * 0.5);
+
+    ctx.globalCompositeOperation = 'lighter';
+    const flick = (sim.time * 30 | 0) % 2;
+    for (let i = 5; i >= 0; i--) {
+      const radius = (10 + i * 22) * sim.throttle + flick;
+      const alpha = (0.18 - i * 0.026);
+      ctx.fillStyle = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',' + alpha + ')';
+      ctx.fillRect(gx - radius, gy - radius, radius * 2, radius * 2);
+    }
+    // bright hot core
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.fillRect(gx - 4, gy - 4, 8, 8);
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function drawHazard(ctx, h, x, y) {
     if (h.type === 'bird') {
-      const flap = ((h.t * 8) | 0) % 2;
-      ctx.fillStyle = '#222';
-      if (flap === 0) {
-        ctx.fillRect(x - 8, y - 1, 6, 2);
-        ctx.fillRect(x + 2, y - 1, 6, 2);
-      } else {
-        ctx.fillRect(x - 8, y - 4, 6, 2);
-        ctx.fillRect(x + 2, y - 4, 6, 2);
-      }
-      ctx.fillRect(x - 2, y, 4, 3);
-      // beak — direction by vx
-      ctx.fillStyle = '#ffaa44';
-      ctx.fillRect(x + (h.vx > 0 ? 2 : -3), y + 1, 1, 1);
+      drawBird(ctx, h, x, y);
     } else if (h.type === 'lightning') {
-      if (!h.armed) {
-        // telegraph: pulsing warning marker
-        const pulse = (Math.sin(h.t * 18) + 1) * 0.5;
-        ctx.fillStyle = 'rgba(255,255,136,' + (0.3 + pulse * 0.5) + ')';
-        ctx.fillRect(x - 3, y - 30, 6, 60);
-        ctx.fillStyle = '#ffff88';
-        ctx.fillRect(x - 6, y - 4, 12, 2);
-        ctx.fillRect(x - 4, y - 7, 8, 1);
-        ctx.fillRect(x - 2, y - 10, 4, 1);
-      } else {
-        // strike: jagged bolt
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(x - 1, y - 30, 3, 60);
-        ctx.fillStyle = '#ffff88';
-        ctx.fillRect(x - 4, y - 22, 4, 3);
-        ctx.fillRect(x + 2, y - 12, 4, 3);
-        ctx.fillRect(x - 5, y - 2, 4, 3);
-        ctx.fillRect(x + 3, y + 8, 4, 3);
-      }
+      drawLightning(ctx, h, x, y);
     } else if (h.type === 'debris') {
-      const ang = (h.spin || 0) * h.t;
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(ang);
-      ctx.fillStyle = '#777';
-      ctx.fillRect(-5, -5, 10, 10);
+      drawDebris(ctx, h, x, y);
+    }
+  }
+
+  function drawBird(ctx, h, x, y) {
+    const dir = h.vx > 0 ? 1 : -1;
+    const flap = (h.t * 9) % 1; // 0..1
+    // wing positions (3 phases)
+    const phase = flap < 0.33 ? 0 : (flap < 0.66 ? 1 : 2);
+
+    // body — dark with hint of blue (corvid)
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(x - 3, y - 1, 6, 4);
+    ctx.fillRect(x - 2, y - 2, 4, 5);
+    // back highlight
+    ctx.fillStyle = '#33333d';
+    ctx.fillRect(x - 2, y - 2, 4, 1);
+    // head + eye
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(x + dir * 2, y - 2, 2, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + dir * 3, y - 2, 1, 1);
+    ctx.fillStyle = '#ffaa44';
+    // beak
+    ctx.fillRect(x + dir * 4, y - 1, 1, 1);
+    // tail
+    ctx.fillStyle = '#1a1a22';
+    ctx.fillRect(x - dir * 4, y, 2, 2);
+
+    // wings (3 flap phases)
+    ctx.fillStyle = '#1a1a22';
+    if (phase === 0) {       // wings up
+      ctx.fillRect(x - 8, y - 5, 6, 2);
+      ctx.fillRect(x + 2, y - 5, 6, 2);
+      ctx.fillRect(x - 5, y - 7, 3, 2);
+      ctx.fillRect(x + 2, y - 7, 3, 2);
+    } else if (phase === 1) { // wings out
+      ctx.fillRect(x - 9, y - 1, 7, 2);
+      ctx.fillRect(x + 2, y - 1, 7, 2);
+      ctx.fillRect(x - 11, y, 2, 1);
+      ctx.fillRect(x + 9, y, 2, 1);
+    } else {                  // wings down
+      ctx.fillRect(x - 8, y + 1, 6, 2);
+      ctx.fillRect(x + 2, y + 1, 6, 2);
+      ctx.fillRect(x - 5, y + 3, 3, 2);
+      ctx.fillRect(x + 2, y + 3, 3, 2);
+    }
+  }
+
+  // Pre-baked branching lightning paths so the bolt looks alive but
+  // doesn't redraw a different shape every frame.
+  function lightningPath(seed) {
+    const rng = (n) => {
+      n = (n + seed * 91) | 0;
+      n = (n ^ (n >>> 15)) * 0x2c1b3c6d;
+      n = (n ^ (n >>> 12)) * 0x297a2d39;
+      return ((n ^ (n >>> 15)) >>> 0) / 4294967296;
+    };
+    const segs = [];
+    let px = 0, py = -28;
+    for (let i = 0; i < 14; i++) {
+      const dx = (rng(i * 3) - 0.5) * 8;
+      const dy = 4 + rng(i * 3 + 1) * 2;
+      segs.push({ x1: px, y1: py, x2: px + dx, y2: py + dy });
+      px += dx; py += dy;
+      // occasional branch
+      if (rng(i * 3 + 2) > 0.7) {
+        let bx = px, by = py;
+        for (let j = 0; j < 4; j++) {
+          const bdx = (rng(i * 7 + j * 2) - 0.5) * 6;
+          const bdy = 3;
+          segs.push({ x1: bx, y1: by, x2: bx + bdx, y2: by + bdy, branch: true });
+          bx += bdx; by += bdy;
+        }
+      }
+    }
+    return segs;
+  }
+  const _lightningCache = {};
+  function getLightning(seed) {
+    if (!_lightningCache[seed]) _lightningCache[seed] = lightningPath(seed);
+    return _lightningCache[seed];
+  }
+
+  function drawLightning(ctx, h, x, y) {
+    if (!h.armed) {
+      // telegraph — pulsing warning glow
+      const pulse = (Math.sin(h.t * 16) + 1) * 0.5;
+      ctx.fillStyle = 'rgba(255, 255, 130,' + (0.18 + pulse * 0.18) + ')';
+      ctx.fillRect(x - 6, y - 32, 12, 64);
+      ctx.fillStyle = 'rgba(255, 255, 200,' + (0.4 + pulse * 0.4) + ')';
+      ctx.fillRect(x - 2, y - 28, 4, 56);
+      // warning chevron at strike point
+      ctx.fillStyle = '#ffff88';
+      ctx.fillRect(x - 8, y - 2, 16, 2);
+      ctx.fillRect(x - 6, y - 5, 12, 1);
+      ctx.fillRect(x - 3, y - 8, 6, 1);
+      // pulsing "exclamation" dot below
+      const a = 0.5 + pulse * 0.5;
+      ctx.fillStyle = 'rgba(255, 220, 80,' + a + ')';
+      ctx.fillRect(x - 1, y + 8, 2, 4);
+      ctx.fillRect(x - 1, y + 14, 2, 2);
+    } else {
+      // active strike — outer halo + bright branching bolt
+      const seed = ((h.x * 1000) | 0) ^ ((h.y * 1000) | 0);
+      const segs = getLightning(seed);
+
+      // outer cyan-white halo
+      ctx.strokeStyle = 'rgba(180, 220, 255, 0.5)';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      segs.forEach(s => {
+        ctx.moveTo(x + s.x1, y + s.y1);
+        ctx.lineTo(x + s.x2, y + s.y2);
+      });
+      ctx.stroke();
+
+      // bright yellow inner bolt
+      ctx.strokeStyle = '#ffff88';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      segs.forEach(s => {
+        ctx.moveTo(x + s.x1, y + s.y1);
+        ctx.lineTo(x + s.x2, y + s.y2);
+      });
+      ctx.stroke();
+
+      // hot white core
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      segs.forEach(s => {
+        if (s.branch) return;
+        ctx.moveTo(x + s.x1, y + s.y1);
+        ctx.lineTo(x + s.x2, y + s.y2);
+      });
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+  }
+
+  function drawDebris(ctx, h, x, y) {
+    const ang = (h.spin || 0) * h.t;
+    const variant = ((h.x * 13 + h.y * 7) | 0) % 3;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    if (variant === 0) {
+      // chunk of metal
+      ctx.fillStyle = '#888';
+      ctx.fillRect(-6, -5, 12, 10);
       ctx.fillStyle = '#aaa';
-      ctx.fillRect(-3, -3, 3, 3);
-      ctx.fillStyle = '#333';
+      ctx.fillRect(-5, -4, 4, 3);
+      ctx.fillStyle = '#444';
       ctx.fillRect(0, 1, 4, 3);
       ctx.fillRect(-4, 2, 2, 2);
-      ctx.restore();
+      // bolt
+      ctx.fillStyle = '#222';
+      ctx.fillRect(-2, -1, 1, 1);
+      ctx.fillRect(2, 2, 1, 1);
+    } else if (variant === 1) {
+      // jagged chunk (asteroid-ish)
+      ctx.fillStyle = '#5a4a3a';
+      ctx.fillRect(-6, -3, 12, 7);
+      ctx.fillRect(-5, -5, 8, 2);
+      ctx.fillRect(-3, 4, 8, 2);
+      ctx.fillStyle = '#7a6a52';
+      ctx.fillRect(-5, -2, 5, 2);
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(2, -1, 3, 2);
+      ctx.fillRect(-3, 2, 2, 2);
+    } else {
+      // satellite chunk (panel + hardware)
+      ctx.fillStyle = '#aaaaaa';
+      ctx.fillRect(-7, -2, 14, 4);
+      // gold foil
+      ctx.fillStyle = '#ddaa55';
+      ctx.fillRect(-6, -1, 12, 2);
+      ctx.fillStyle = '#886633';
+      ctx.fillRect(-6, 0, 12, 1);
+      // antenna stub
+      ctx.fillStyle = '#444';
+      ctx.fillRect(0, -5, 1, 4);
+      ctx.fillRect(-1, -6, 3, 1);
     }
+    ctx.restore();
   }
 
   function drawRocket(ctx, cx, cy, sim) {
