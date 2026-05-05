@@ -12,7 +12,7 @@
     bestAltitude: 0,
     totalLaunches: 0,
     successfulMoonshots: 0,
-    unlocked: ['soda_bottle', 'duct_tape', 'lawn_chair', 'cardboard_fin'],
+    unlocked: ['soda_bottle', 'duct_tape', 'lawn_chair', 'trash_can', 'cardboard_fin'],
     lastBuild: null,
     seenChallengeId: null,
     completedChallenges: [],

@@ -490,6 +490,275 @@
     rivet(ctx, X + 18 * s, Y + 12 * s, s);
   }
 
+  // ==========================================================
+  // NEW PARTS — additional gear for the catalog
+  // ==========================================================
+
+  function drawPressureCooker(ctx, cx, by, s, frame) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // pressure release valve (black knob, hisses when active)
+    rect(ctx, X + 14 * s, Y + 0, 4 * s, 3 * s, '#222', '#000');
+    px(ctx, X + 15 * s, Y + 1 * s, 2 * s, 1 * s, '#444');
+    // wisp of steam if active
+    if (frame && frame.thrusting) {
+      const w = (frame.t % 6 < 3) ? 0 : 1;
+      px(ctx, X + 14 * s + w, Y - 2 * s, 1 * s, 2 * s, 'rgba(220,220,230,0.7)');
+    }
+    // domed lid
+    rect(ctx, X + 8 * s,  Y + 3 * s, 16 * s, 3 * s, '#bbbbbb', '#444444');
+    rect(ctx, X + 6 * s,  Y + 6 * s, 20 * s, 2 * s, '#cccccc', '#444444');
+    px(ctx, X + 7 * s, Y + 6 * s, 18 * s, 1 * s, '#eeeeee');
+    // 4 lid clamps (latches)
+    rect(ctx, X + 4 * s,  Y + 7 * s, 3 * s, 3 * s, '#555', '#222');
+    rect(ctx, X + 25 * s, Y + 7 * s, 3 * s, 3 * s, '#555', '#222');
+    px(ctx, X + 5 * s, Y + 8 * s, 1 * s, 1 * s, '#888');
+    px(ctx, X + 26 * s, Y + 8 * s, 1 * s, 1 * s, '#888');
+    // pressure gauge dial on the lid
+    rect(ctx, X + 13 * s, Y + 4 * s, 6 * s, 3 * s, '#dddddd', '#222');
+    px(ctx, X + 15 * s, Y + 5 * s, 1 * s, 1 * s, '#cc0000'); // needle
+    px(ctx, X + 16 * s, Y + 5 * s, 1 * s, 1 * s, '#cc0000');
+    // body — polished stainless cylinder
+    cyl(ctx, X + 4 * s,  Y + 10 * s, 24 * s, 18 * s, '#c0c0c8', '#e8e8f0', '#7a7a82', '#222');
+    // mid hoop/band
+    rect(ctx, X + 4 * s, Y + 17 * s, 24 * s, 2 * s, '#888', '#222');
+    px(ctx, X + 5 * s, Y + 17 * s, 22 * s, 1 * s, '#aaaabb');
+    // SAFE-T-COOK brand band
+    rect(ctx, X + 6 * s, Y + 13 * s, 20 * s, 3 * s, '#cc3333', '#552211');
+    brandRow(ctx, X + 8 * s, Y + 14 * s, s, '#ffeecc');
+    // rivet ring around body
+    for (let i = 0; i < 5; i++) rivet(ctx, X + (6 + i * 4) * s, Y + 21 * s, s);
+    // vertical highlight stripe
+    px(ctx, X + 6 * s, Y + 11 * s, 1 * s, 16 * s, '#e8e8f0');
+    // bottom mount + heating element
+    rect(ctx, X + 8 * s, Y + 28 * s, 16 * s, 2 * s, '#666', '#222');
+    rect(ctx, X + 10 * s, Y + 30 * s, 12 * s, 2 * s, '#888', '#222');
+    if (frame && frame.thrusting) {
+      px(ctx, X + 10 * s, Y + 30 * s, 12 * s, 1 * s, '#ff7733');
+      flame(ctx, X + 16 * s, Y + 32 * s, 12 * s, 12 * s, frame.t,
+            ['#ff5511', '#ffaa44', '#ffeeaa']);
+    }
+  }
+
+  function drawMagnetron(ctx, cx, by, s, frame) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // outer microwave box
+    rect(ctx, X + 4 * s,  Y + 2 * s,  24 * s, 22 * s, '#333344', '#0a0a14');
+    // top brushed-metal panel
+    rect(ctx, X + 4 * s,  Y + 2 * s,  24 * s, 4 * s,  '#666677', '#0a0a14');
+    px(ctx, X + 5 * s, Y + 3 * s, 22 * s, 1 * s, '#888899');
+    // viewing window with glowing magnetron tube
+    rect(ctx, X + 6 * s,  Y + 6 * s, 14 * s, 14 * s, '#0a0a0a', '#222');
+    // glow inside (pulses when thrusting)
+    const lit = frame && frame.thrusting;
+    const glow = lit ? ((frame.t % 4 < 2) ? '#ffaa66' : '#ff7733') : '#552211';
+    px(ctx, X + 8 * s, Y + 8 * s, 10 * s, 10 * s, glow);
+    // magnetron tube center
+    rect(ctx, X + 11 * s, Y + 10 * s, 4 * s, 6 * s, '#888', '#222');
+    if (lit) {
+      px(ctx, X + 12 * s, Y + 11 * s, 2 * s, 4 * s, '#ffeeaa');
+      // sparks inside
+      const sp = ((frame.t * 3) | 0) % 4;
+      px(ctx, X + (8 + sp) * s, Y + (12 + sp) * s, 1 * s, 1 * s, '#ffffff');
+      px(ctx, X + (16 - sp) * s, Y + (10 + sp) * s, 1 * s, 1 * s, '#ffffff');
+    }
+    // window grille (microwave-style mesh dots)
+    for (let i = 0; i < 5; i++) {
+      for (let j = 0; j < 4; j++) {
+        if ((i + j) % 2 === 0) {
+          px(ctx, X + (7 + i * 3) * s, Y + (8 + j * 3) * s, 1 * s, 1 * s, '#222');
+        }
+      }
+    }
+    // control panel on the right
+    rect(ctx, X + 21 * s, Y + 6 * s, 6 * s, 14 * s, '#222', '#000');
+    // digital display
+    rect(ctx, X + 22 * s, Y + 7 * s, 4 * s, 3 * s, '#0a1a10', '#000');
+    px(ctx, X + 23 * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
+    px(ctx, X + 24 * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
+    // round buttons
+    px(ctx, X + 23 * s, Y + 12 * s, 2 * s, 2 * s, '#aaa');
+    px(ctx, X + 23 * s, Y + 15 * s, 2 * s, 2 * s, '#aaa');
+    px(ctx, X + 23 * s, Y + 18 * s, 2 * s, 2 * s, '#cc3333');
+    // vent slats on left
+    for (let i = 0; i < 5; i++) px(ctx, X + 5 * s, Y + (7 + i * 3) * s, 1 * s, 1 * s, '#222');
+    // brand
+    px(ctx, X + 5 * s, Y + 23 * s, 12 * s, 1 * s, '#aaa');
+    // exhaust port at bottom
+    rect(ctx, X + 8 * s, Y + 24 * s, 16 * s, 4 * s, '#444', '#0a0a14');
+    rect(ctx, X + 10 * s, Y + 28 * s, 12 * s, 2 * s, '#222', '#000');
+    if (lit) {
+      flame(ctx, X + 16 * s, Y + 30 * s, 14 * s, 14 * s, frame.t,
+            ['#ff5511', '#ffaa44', '#ffeeaa']);
+    }
+  }
+
+  function drawBeerKeg(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // tap on top
+    rect(ctx, X + 14 * s, Y + 0, 4 * s, 3 * s, '#aaa', '#222');
+    px(ctx, X + 15 * s, Y + 1 * s, 2 * s, 1 * s, '#ddd');
+    rect(ctx, X + 13 * s, Y + 3 * s, 6 * s, 2 * s, '#666', '#222');
+    // domed top with rim hoop
+    rect(ctx, X + 6 * s,  Y + 5 * s, 20 * s, 3 * s, '#aaaaaa', '#222');
+    rect(ctx, X + 4 * s,  Y + 7 * s, 24 * s, 3 * s, '#888', '#222');
+    px(ctx, X + 5 * s, Y + 7 * s, 22 * s, 1 * s, '#bbb');
+    // body — stainless cylinder
+    cyl(ctx, X + 4 * s,  Y + 10 * s, 24 * s, 18 * s, '#bbbbc4', '#dddde4', '#7a7a82', '#222');
+    // mid hoop
+    rect(ctx, X + 4 * s, Y + 17 * s, 24 * s, 2 * s, '#666', '#222');
+    px(ctx, X + 4 * s, Y + 17 * s, 24 * s, 1 * s, '#888');
+    // brand label panel
+    rect(ctx, X + 6 * s, Y + 11 * s, 20 * s, 5 * s, '#cc8822', '#552211');
+    px(ctx, X + 6 * s, Y + 11 * s, 20 * s, 1 * s, '#eeaa44');
+    brandRow(ctx, X + 8 * s, Y + 12 * s, s, '#ffeecc');
+    // foam bubbles overflowing the tap
+    px(ctx, X + 13 * s, Y + 4 * s, 1 * s, 1 * s, '#ffffff');
+    px(ctx, X + 19 * s, Y + 5 * s, 1 * s, 1 * s, '#ffffff');
+    // condensation droplets
+    px(ctx, X + 8 * s, Y + 21 * s, 1 * s, 1 * s, '#ddddee');
+    px(ctx, X + 22 * s, Y + 23 * s, 1 * s, 1 * s, '#ddddee');
+    // bung hole on the side
+    rect(ctx, X + 22 * s, Y + 21 * s, 3 * s, 3 * s, '#222', '#000');
+    // bottom rim hoop
+    rect(ctx, X + 4 * s, Y + 28 * s, 24 * s, 4 * s, '#888', '#222');
+    px(ctx, X + 5 * s, Y + 29 * s, 22 * s, 1 * s, '#bbb');
+    px(ctx, X + 5 * s, Y + 31 * s, 22 * s, 1 * s, '#444');
+  }
+
+  function drawPropaneTank(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 36 * s;
+    // protective ring around valve
+    rect(ctx, X + 8 * s,  Y + 0, 16 * s, 1 * s, '#444', null);
+    px(ctx, X + 8 * s, Y + 1 * s, 1 * s, 4 * s, '#444');
+    px(ctx, X + 23 * s, Y + 1 * s, 1 * s, 4 * s, '#444');
+    // valve handle (red BBQ-style)
+    rect(ctx, X + 13 * s, Y + 1 * s, 6 * s, 3 * s, '#cc3333', '#552211');
+    px(ctx, X + 14 * s, Y + 2 * s, 4 * s, 1 * s, '#ee5544');
+    // valve stem
+    rect(ctx, X + 15 * s, Y + 4 * s, 2 * s, 2 * s, '#888', '#222');
+    // domed top
+    rect(ctx, X + 6 * s,  Y + 6 * s, 20 * s, 3 * s, '#dddddd', '#222');
+    rect(ctx, X + 4 * s,  Y + 9 * s, 24 * s, 2 * s, '#cccccc', '#222');
+    px(ctx, X + 5 * s, Y + 9 * s, 22 * s, 1 * s, '#eeeeee');
+    // tall white body
+    cyl(ctx, X + 4 * s,  Y + 11 * s, 24 * s, 22 * s, '#dddddd', '#ffffff', '#888888', '#222');
+    // hazard warning label (red diamond)
+    rect(ctx, X + 6 * s, Y + 14 * s, 8 * s, 8 * s, '#cc3333', '#552211');
+    px(ctx, X + 9 * s, Y + 16 * s, 2 * s, 1 * s, '#ffeeaa');  // flame icon
+    px(ctx, X + 8 * s, Y + 17 * s, 4 * s, 1 * s, '#ffeeaa');
+    px(ctx, X + 7 * s, Y + 18 * s, 6 * s, 2 * s, '#ffeeaa');
+    px(ctx, X + 9 * s, Y + 20 * s, 2 * s, 1 * s, '#ffaa00');
+    // PROPANE label across (orange band)
+    rect(ctx, X + 14 * s, Y + 16 * s, 12 * s, 4 * s, '#ff8822', '#552211');
+    brandRow(ctx, X + 14 * s, Y + 17 * s, s, '#ffeecc');
+    // hand-painted serial number
+    px(ctx, X + 8 * s, Y + 26 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 10 * s, Y + 26 * s, 2 * s, 2 * s, '#222');
+    px(ctx, X + 13 * s, Y + 26 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 15 * s, Y + 26 * s, 2 * s, 2 * s, '#222');
+    // bottom skirt
+    rect(ctx, X + 6 * s, Y + 33 * s, 20 * s, 3 * s, '#999', '#222');
+    px(ctx, X + 7 * s, Y + 34 * s, 18 * s, 1 * s, '#bbb');
+  }
+
+  function drawTrashCan(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 28 * s;
+    // lid with handle
+    rect(ctx, X + 4 * s,  Y + 0, 24 * s, 2 * s, '#999999', '#444');
+    px(ctx, X + 5 * s, Y + 0, 22 * s, 1 * s, '#bbbbbb');
+    // lid handle on top
+    rect(ctx, X + 13 * s, Y - 2 * s, 6 * s, 2 * s, '#666', '#222');
+    px(ctx, X + 14 * s, Y - 1 * s, 4 * s, 1 * s, '#888');
+    // lid lip
+    rect(ctx, X + 3 * s,  Y + 2 * s, 26 * s, 2 * s, '#777', '#222');
+    px(ctx, X + 4 * s, Y + 2 * s, 24 * s, 1 * s, '#999');
+    // body — galvanized steel cylinder
+    cyl(ctx, X + 5 * s,  Y + 4 * s, 22 * s, 20 * s, '#888', '#aaaabb', '#555', '#222');
+    // 3 horizontal ribs (galvanized look)
+    px(ctx, X + 5 * s, Y + 8 * s,  22 * s, 1 * s, '#666');
+    px(ctx, X + 5 * s, Y + 14 * s, 22 * s, 1 * s, '#666');
+    px(ctx, X + 5 * s, Y + 20 * s, 22 * s, 1 * s, '#666');
+    px(ctx, X + 5 * s, Y + 9 * s,  22 * s, 1 * s, '#aaa');
+    px(ctx, X + 5 * s, Y + 15 * s, 22 * s, 1 * s, '#aaa');
+    px(ctx, X + 5 * s, Y + 21 * s, 22 * s, 1 * s, '#aaa');
+    // side handles
+    rect(ctx, X + 2 * s,  Y + 11 * s, 3 * s, 4 * s, '#555', '#222');
+    rect(ctx, X + 27 * s, Y + 11 * s, 3 * s, 4 * s, '#555', '#222');
+    // dent (chaos detail)
+    px(ctx, X + 18 * s, Y + 17 * s, 4 * s, 2 * s, '#555');
+    // spilled trash hint (banana peel sticking out under lid)
+    px(ctx, X + 20 * s, Y + 3 * s, 3 * s, 1 * s, '#ffcc33');
+    // base
+    rect(ctx, X + 4 * s,  Y + 24 * s, 24 * s, 4 * s, '#555', '#222');
+    px(ctx, X + 5 * s, Y + 25 * s, 22 * s, 1 * s, '#777');
+  }
+
+  function drawFilingCabinet(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 32 * s;
+    // top surface with rim
+    rect(ctx, X + 4 * s,  Y + 0, 24 * s, 3 * s, '#888', '#222');
+    px(ctx, X + 5 * s, Y + 1 * s, 22 * s, 1 * s, '#aaa');
+    // body box (taller than other bodies)
+    rect(ctx, X + 4 * s,  Y + 3 * s, 24 * s, 27 * s, '#999', '#222');
+    // left-side highlight
+    px(ctx, X + 5 * s, Y + 3 * s, 1 * s, 26 * s, '#bbb');
+    px(ctx, X + 26 * s, Y + 3 * s, 1 * s, 26 * s, '#666');
+    // 3 drawers with handles + label tabs
+    for (let i = 0; i < 3; i++) {
+      const dy = Y + (5 + i * 8) * s;
+      // drawer face
+      rect(ctx, X + 6 * s, dy, 20 * s, 7 * s, '#aaa', '#444');
+      px(ctx, X + 6 * s, dy, 20 * s, 1 * s, '#ccc');
+      px(ctx, X + 6 * s, dy + 6 * s, 20 * s, 1 * s, '#777');
+      // pull handle
+      rect(ctx, X + 13 * s, dy + 3 * s, 6 * s, 2 * s, '#666', '#222');
+      px(ctx, X + 14 * s, dy + 3 * s, 4 * s, 1 * s, '#888');
+      // label tab (white card)
+      rect(ctx, X + 8 * s, dy + 1 * s, 4 * s, 2 * s, '#ffffee', '#888');
+      px(ctx, X + 9 * s, dy + 2 * s, 2 * s, 1 * s, '#222');
+    }
+    // brand sticker on top
+    rect(ctx, X + 18 * s, Y + 1 * s, 8 * s, 1 * s, '#cc3333', null);
+    // wheels at bottom
+    rect(ctx, X + 5 * s,  Y + 30 * s, 3 * s, 2 * s, '#222', '#000');
+    rect(ctx, X + 24 * s, Y + 30 * s, 3 * s, 2 * s, '#222', '#000');
+  }
+
+  function drawPlywoodFin(ctx, cx, by, s) {
+    const X = cx - 16 * s, Y = by - 16 * s;
+    // left fin (plywood with grain)
+    rect(ctx, X + 0 * s,   Y + 8 * s,  8 * s, 8 * s, '#cc9966', '#553311');
+    rect(ctx, X + 0 * s,   Y + 4 * s,  6 * s, 4 * s, '#cc9966', '#553311');
+    rect(ctx, X + 0 * s,   Y + 0 * s,  4 * s, 4 * s, '#cc9966', '#553311');
+    // wood grain horizontal lines
+    px(ctx, X + 1 * s, Y + 2 * s, 3 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 1 * s, Y + 6 * s, 5 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 1 * s, Y + 10 * s, 6 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 1 * s, Y + 13 * s, 7 * s, 1 * s, '#a87a4a');
+    // knot detail
+    px(ctx, X + 4 * s, Y + 11 * s, 2 * s, 2 * s, '#7a4a2a');
+    px(ctx, X + 5 * s, Y + 12 * s, 1 * s, 1 * s, '#5a3a1a');
+    // edge highlight
+    px(ctx, X + 0 * s, Y + 1 * s, 1 * s, 13 * s, '#eebb88');
+    // right fin (mirror)
+    rect(ctx, X + 24 * s,  Y + 8 * s,  8 * s, 8 * s, '#cc9966', '#553311');
+    rect(ctx, X + 26 * s,  Y + 4 * s,  6 * s, 4 * s, '#cc9966', '#553311');
+    rect(ctx, X + 28 * s,  Y + 0 * s,  4 * s, 4 * s, '#cc9966', '#553311');
+    px(ctx, X + 28 * s, Y + 2 * s, 3 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 26 * s, Y + 6 * s, 5 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 25 * s, Y + 10 * s, 6 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 24 * s, Y + 13 * s, 7 * s, 1 * s, '#a87a4a');
+    px(ctx, X + 26 * s, Y + 11 * s, 2 * s, 2 * s, '#7a4a2a');
+    px(ctx, X + 27 * s, Y + 12 * s, 1 * s, 1 * s, '#5a3a1a');
+    px(ctx, X + 31 * s, Y + 1 * s, 1 * s, 13 * s, '#eebb88');
+    // center connector with bolts
+    cyl(ctx, X + 12 * s, Y + 8 * s, 8 * s, 8 * s, '#888', '#aaa', '#444', '#222');
+    rivet(ctx, X + 13 * s, Y + 9 * s, s);
+    rivet(ctx, X + 18 * s, Y + 9 * s, s);
+    rivet(ctx, X + 13 * s, Y + 13 * s, s);
+    rivet(ctx, X + 18 * s, Y + 13 * s, s);
+  }
+
   function drawSteelFin(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 16 * s;
     // left fin with swept aerodynamic shape
@@ -547,6 +816,23 @@
       blurb: 'Probably not aerospace grade.',
     },
     {
+      id: 'pressure_cooker', name: 'Pressure Cooker', category: 'engine', tier: 1,
+      mass: 14, height: 32,
+      thrust: 26, burnRate: 0.7, jank: 5, breakChance: 0.0006,
+      flameColor: '#ffaa44',
+      sprite: drawPressureCooker,
+      blurb: 'Reliable. Frugal. Possibly explosive.',
+    },
+    {
+      id: 'magnetron', name: 'Microwave Magnetron', category: 'engine', tier: 2,
+      mass: 16, height: 32,
+      thrust: 50, burnRate: 1.4, jank: 35, breakChance: 0.005,
+      thrustVariance: 0.3,
+      flameColor: '#ff8855',
+      sprite: drawMagnetron,
+      blurb: 'Cooks fuel from the inside out.',
+    },
+    {
       id: 'leaf_blower', name: 'Leaf Blower Thruster', category: 'engine', tier: 2,
       mass: 10, height: 32,
       thrust: 28, burnRate: 0.9, jank: 10, breakChance: 0.0008,
@@ -577,11 +863,39 @@
       blurb: 'Now with 0% soup.',
     },
     {
+      id: 'beer_keg', name: 'Beer Keg Tank', category: 'fuel', tier: 1,
+      mass: 14, height: 32,
+      capacity: 180,
+      sprite: drawBeerKeg,
+      blurb: 'Drained for science.',
+    },
+    {
+      id: 'propane_tank', name: 'Propane Tank', category: 'fuel', tier: 2,
+      mass: 24, height: 36,
+      capacity: 280,
+      sprite: drawPropaneTank,
+      blurb: 'Strapped in by a single shoelace.',
+    },
+    {
       id: 'lawn_chair', name: 'Lawn Chair Cockpit', category: 'body', tier: 0,
       mass: 6, height: 28,
       stability: 8, hullBonus: 0,
       sprite: drawLawnChair,
       blurb: 'Cup holder included.',
+    },
+    {
+      id: 'trash_can', name: 'Trash Can Hull', category: 'body', tier: 0,
+      mass: 5, height: 28,
+      stability: 6, hullBonus: 15,
+      sprite: drawTrashCan,
+      blurb: 'Bin there. Done that.',
+    },
+    {
+      id: 'filing_cabinet', name: 'Filing Cabinet', category: 'body', tier: 1,
+      mass: 30, height: 32,
+      stability: 35, hullBonus: 100,
+      sprite: drawFilingCabinet,
+      blurb: 'Bureaucracy-grade armor.',
     },
     {
       id: 'shopping_cart', name: 'Shopping Cart Chassis', category: 'body', tier: 2,
@@ -596,6 +910,13 @@
       stability: 18,
       sprite: drawCardboardFin,
       blurb: 'Aerodynamic in spirit.',
+    },
+    {
+      id: 'plywood_fin', name: 'Plywood Fin', category: 'fin', tier: 1,
+      mass: 4, height: 16,
+      stability: 28,
+      sprite: drawPlywoodFin,
+      blurb: 'Cut on the kitchen counter.',
     },
     {
       id: 'steel_fin', name: 'Steel Fin', category: 'fin', tier: 2,
