@@ -20,7 +20,11 @@
     $$('.screen').forEach(el => el.classList.remove('active'));
     const target = $('#screen-' + screen);
     if (target) target.classList.add('active');
-    if (screen === 'title') refreshTitle();
+    if (screen === 'title') {
+      Game.sandbox = false;
+      Game.activeChallenge = null;
+      refreshTitle();
+    }
     if (screen === 'hangar') Builder.enter(Game);
     if (screen === 'flight') Flight.enter(Game);
     if (screen === 'challenges') renderChallenges();
@@ -110,7 +114,7 @@
         showToast(validation.reason);
         return;
       }
-      Audio.play('launch');
+      Sfx.play('launch');
       Game.lastRocket = rocket;
       go('flight');
     });

@@ -80,7 +80,7 @@
     }
     window.addEventListener('resize', fitCanvas);
 
-    Audio.startEngine();
+    Sfx.startEngine();
     F.lastT = performance.now();
     cancelAnimationFrame(F.raf);
     F.raf = requestAnimationFrame(loop.bind(null, Game));
@@ -89,7 +89,7 @@
   function exit() {
     cancelAnimationFrame(F.raf);
     F.raf = 0;
-    Audio.stopEngine();
+    Sfx.stopEngine();
   }
 
   function fitCanvas() {
@@ -238,7 +238,7 @@
       });
       F.particles = F.particles.filter(p => p.life > 0);
       if (F.msgT > 0) F.msgT -= dt;
-      Audio.setEngineIntensity(0);
+      Sfx.setEngineIntensity(0);
       return;
     }
 
@@ -256,7 +256,7 @@
       if (!eng.alive) return;
       const part = Parts.byId(eng.id);
       if (!part) return;
-      if (s.throttle > 0.1 && Math.random() < part.breakChance * dt * 60) {
+      if (s.throttle > 0.1 && Math.random() < part.breakChance * dt) {
         eng.alive = false;
         flashMsg(part.catastrophic ? 'CORE MELTDOWN' : (part.name + ' FAILED'));
         spawnExplosion(s.x, s.y - 0.5, part.catastrophic ? 1.5 : 0.6);
@@ -368,14 +368,14 @@
       s.crashReason = s.crashReason || 'STRUCTURAL FAILURE';
       flashMsg('KABOOM');
       spawnExplosion(s.x, s.y, 3);
-      Audio.play('explosion');
+      Sfx.play('explosion');
     }
 
     // moon check
     if (s.y >= MOON_ALTITUDE_M && !s.moonReached) {
       s.moonReached = true;
       flashMsg('MOON REACHED!');
-      Audio.play('win');
+      Sfx.play('win');
     }
 
     // out of fuel + falling far below max → end
@@ -411,7 +411,7 @@
     if (F.msgT > 0) F.msgT -= dt;
 
     // engine sound intensity
-    Audio.setEngineIntensity(s.throttle * (s.fuel > 0 ? 1 : 0));
+    Sfx.setEngineIntensity(s.throttle * (s.fuel > 0 ? 1 : 0));
   }
 
   function flashMsg(m) { F.msg = m; F.msgT = 1.6; }

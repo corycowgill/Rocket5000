@@ -264,7 +264,7 @@
     saveBuild(Game);
     redraw();
     updateStats();
-    Audio.play('snap');
+    Sfx.play('snap');
   }
 
   function saveBuild(Game) {

@@ -440,6 +440,8 @@ canvas {
   cursor: pointer;
   -webkit-user-select: none;
   user-select: none;
+  touch-action: none;
+  -webkit-touch-callout: none;
 }
 .touch-btn:active, .touch-btn.held {
   background: var(--accent);
