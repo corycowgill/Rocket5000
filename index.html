@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
+<meta name="theme-color" content="#0b0e1a" />
+<title>Scrap Rocket: Moonshot Mayhem</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- TITLE SCREEN -->
+  <section id="screen-title" class="screen active">
+    <div class="title-stars" aria-hidden="true"></div>
+    <div class="title-content">
+      <h1 class="logo">
+        <span class="logo-line-1">SCRAP ROCKET</span>
+        <span class="logo-line-2">Moonshot Mayhem</span>
+      </h1>
+      <p class="tagline">Build it. Launch it. Watch it explode.</p>
+      <div class="menu">
+        <button class="btn btn-primary" data-go="hangar">PLAY</button>
+        <button class="btn" data-go="challenges">CHALLENGES</button>
+        <button class="btn" data-go="sandbox">SANDBOX</button>
+        <button class="btn btn-ghost" data-go="help">HOW TO PLAY</button>
+      </div>
+      <div class="title-meta">
+        <span id="title-best">Best: 0 ft</span>
+        <span id="title-scrap">Scrap: 0</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- HANGAR / BUILDER -->
+  <section id="screen-hangar" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title" title="Back">&larr;</button>
+      <div class="topbar-title">HANGAR</div>
+      <div class="topbar-stats">
+        <span class="stat" id="hangar-scrap">SCRAP 0</span>
+        <span class="stat" id="hangar-data">DATA 0</span>
+      </div>
+    </header>
+
+    <div class="hangar-layout">
+      <aside class="parts-panel" aria-label="Parts">
+        <div class="parts-tabs">
+          <button class="tab active" data-cat="engine">Engines</button>
+          <button class="tab" data-cat="fuel">Fuel</button>
+          <button class="tab" data-cat="body">Bodies</button>
+          <button class="tab" data-cat="fin">Fins</button>
+        </div>
+        <div class="parts-list" id="parts-list"></div>
+      </aside>
+
+      <main class="builder">
+        <canvas id="build-canvas" width="640" height="720"></canvas>
+        <div class="build-readout" id="build-readout"></div>
+        <div class="builder-tools">
+          <button class="btn btn-small" id="btn-clear">CLEAR</button>
+          <button class="btn btn-small" id="btn-rename">RENAME</button>
+        </div>
+      </main>
+
+      <aside class="stats-panel" aria-label="Rocket stats">
+        <h3>ROCKET</h3>
+        <div class="rocket-name" id="rocket-name">Untitled Junk</div>
+        <ul class="stats-list">
+          <li><span>Mass</span><b id="stat-mass">0 kg</b></li>
+          <li><span>Thrust</span><b id="stat-thrust">0 kN</b></li>
+          <li><span>TWR</span><b id="stat-twr">0.0</b></li>
+          <li><span>Fuel</span><b id="stat-fuel">0 L</b></li>
+          <li><span>Stability</span><b id="stat-stab">0%</b></li>
+          <li><span>Jank</span><b id="stat-jank">0%</b></li>
+        </ul>
+        <div class="personality" id="rocket-personality">No personality yet</div>
+        <button class="btn btn-primary btn-launch" id="btn-launch">LAUNCH &uarr;</button>
+      </aside>
+    </div>
+  </section>
+
+  <!-- FLIGHT -->
+  <section id="screen-flight" class="screen">
+    <canvas id="flight-canvas"></canvas>
+    <div class="flight-hud">
+      <div class="hud-top">
+        <div class="hud-cell"><label>ALT</label><b id="hud-alt">0 ft</b></div>
+        <div class="hud-cell"><label>VEL</label><b id="hud-vel">0</b></div>
+        <div class="hud-cell"><label>FUEL</label><b id="hud-fuel">0%</b></div>
+        <div class="hud-cell"><label>HULL</label><b id="hud-hull">100%</b></div>
+      </div>
+      <div class="hud-msg" id="hud-msg"></div>
+      <div class="touch-controls">
+        <button class="touch-btn" id="touch-left">&larr;</button>
+        <button class="touch-btn touch-thrust" id="touch-thrust">THRUST</button>
+        <button class="touch-btn" id="touch-right">&rarr;</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="screen-result" class="screen">
+    <div class="result-card">
+      <h2 id="result-title">CRASH</h2>
+      <div class="result-altitude"><span id="result-alt">0</span> <small>ft</small></div>
+      <div class="result-flair" id="result-flair">Spectacular failure.</div>
+      <ul class="result-rewards" id="result-rewards"></ul>
+      <div class="result-actions">
+        <button class="btn btn-primary" id="btn-retry">RETRY</button>
+        <button class="btn" id="btn-back-hangar">HANGAR</button>
+        <button class="btn btn-ghost" data-go="title">TITLE</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CHALLENGES -->
+  <section id="screen-challenges" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title">&larr;</button>
+      <div class="topbar-title">DAILY CHALLENGE</div>
+      <div></div>
+    </header>
+    <div class="challenge-body" id="challenge-body"></div>
+  </section>
+
+  <!-- SANDBOX intro -->
+  <section id="screen-sandbox" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title">&larr;</button>
+      <div class="topbar-title">SANDBOX</div>
+      <div></div>
+    </header>
+    <div class="sandbox-body">
+      <p>Sandbox unlocks every part. Crash without consequence.</p>
+      <button class="btn btn-primary" id="btn-sandbox-go">ENTER HANGAR</button>
+    </div>
+  </section>
+
+  <!-- HELP -->
+  <section id="screen-help" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title">&larr;</button>
+      <div class="topbar-title">HOW TO PLAY</div>
+      <div></div>
+    </header>
+    <div class="help-body">
+      <h3>BUILDING</h3>
+      <p>Click a part on the left, then click on the rocket grid to place it. Stack parts vertically. You need at least one engine, one fuel tank, and one body.</p>
+      <h3>FLYING</h3>
+      <p>Hold <b>Space</b> or <b>THRUST</b> to burn fuel. Tap <b>&larr;/&rarr;</b> to steer. Don't oversteer or you'll spin out.</p>
+      <h3>WINNING</h3>
+      <p>Reach <b>1,000,000 ft</b> to touch the moon. Crashes earn scrap. Higher altitudes unlock better parts.</p>
+      <h3>JANK</h3>
+      <p>Some parts are unreliable. Higher Jank means weirder flights.</p>
+    </div>
+  </section>
+
+  <div id="toast" class="toast"></div>
+</div>
+
+<script src="js/parts.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/render.js"></script>
+<script src="js/builder.js"></script>
+<script src="js/flight.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
