@@ -213,6 +213,7 @@
       pickupScrap: 0,       // scrap collected from pickups this run
       pickupData: 0,        // data collected from pickups this run
       pickupCount: 0,       // total pickups grabbed
+      shieldT: 0,           // remaining seconds of damage immunity
     };
   }
 
@@ -288,6 +289,9 @@
         if (!e.repeat) jettisonStage();
         e.preventDefault();
       }
+      if (!e.repeat && (e.code === 'Digit1' || e.code === 'Numpad1')) { useAbility('boost');  e.preventDefault(); }
+      if (!e.repeat && (e.code === 'Digit2' || e.code === 'Numpad2')) { useAbility('repair'); e.preventDefault(); }
+      if (!e.repeat && (e.code === 'Digit3' || e.code === 'Numpad3')) { useAbility('shield'); e.preventDefault(); }
     });
     document.addEventListener('keyup', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') F.keys.thrust = false;
@@ -314,6 +318,80 @@
     const stageHandler = (e) => { jettisonStage(); e.preventDefault(); };
     stageBtn.addEventListener('click', stageHandler);
     stageBtn.addEventListener('touchstart', stageHandler, { passive: false });
+
+    // ability buttons (boost / repair / shield)
+    bindAbility('#ability-boost',  'boost');
+    bindAbility('#ability-repair', 'repair');
+    bindAbility('#ability-shield', 'shield');
+  }
+
+  function bindAbility(selector, id) {
+    const el = $(selector);
+    if (!el) return;
+    const handler = (e) => { useAbility(id); e.preventDefault(); };
+    el.addEventListener('click', handler);
+    el.addEventListener('touchstart', handler, { passive: false });
+  }
+
+  function useAbility(id) {
+    if (!F.sim || F.sim.exiting) return false;
+    if (!Game.spendConsumable(id)) {
+      flashMsg('NO ' + id.toUpperCase() + ' STOCK');
+      return false;
+    }
+    const s = F.sim;
+    if (id === 'boost') {
+      // instant velocity along thrust axis
+      const ex = -Math.sin(s.angle), ey = -Math.cos(s.angle);
+      s.vx += -ex * 50;
+      s.vy += -ey * 50;
+      s.shake = Math.max(s.shake || 0, 0.6);
+      s.flash = Math.max(s.flash || 0, 0.4);
+      s.flashColor = '#ffaa44';
+      // celebratory exhaust burst
+      for (let i = 0; i < 24; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 6 + Math.random() * 10;
+        F.particles.push({
+          x: s.x + ex * 0.6, y: s.y + ey * 0.6,
+          vx: ex * (10 + Math.random() * 6) + Math.cos(a) * sp * 0.3,
+          vy: ey * (10 + Math.random() * 6) + Math.sin(a) * sp * 0.3,
+          life: 0.5 + Math.random() * 0.4,
+          color: i % 2 === 0 ? '#ffffff' : '#ffaa44',
+          size: 3,
+        });
+      }
+      flashMsg('BOOST!');
+    }
+    if (id === 'repair') {
+      const before = s.hull;
+      s.hull = Math.min(s.maxHull, s.hull + 50);
+      s.flash = Math.max(s.flash || 0, 0.3);
+      s.flashColor = '#88ff88';
+      // green sparkle around rocket
+      for (let i = 0; i < 18; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = 1 + Math.random() * 1.5;
+        F.particles.push({
+          x: s.x + Math.cos(a) * r,
+          y: s.y + Math.sin(a) * r,
+          vx: Math.cos(a) * 4,
+          vy: Math.sin(a) * 4,
+          life: 0.6,
+          color: '#88ff88',
+          size: 2,
+        });
+      }
+      flashMsg('REPAIRED +' + Math.floor(s.hull - before));
+    }
+    if (id === 'shield') {
+      s.shieldT = 5.0;
+      s.flash = Math.max(s.flash || 0, 0.4);
+      s.flashColor = '#aaccff';
+      flashMsg('SHIELD UP 5s');
+    }
+    Sfx.play('snap');
+    return true;
   }
 
   // ---- staging --------------------------------------------------------------
@@ -658,6 +736,8 @@
     // shake + flash decay
     if (s.flash > 0) s.flash = Math.max(0, s.flash - dt * 1.6);
     if (s.shake > 0) s.shake = Math.max(0, s.shake - dt * 1.2);
+    // shield burst countdown
+    if (s.shieldT > 0) s.shieldT = Math.max(0, s.shieldT - dt);
 
     // collision: ground
     if (s.y < 0 && s.vy < 0) {
@@ -926,6 +1006,25 @@
         const dx = h.x - s.x, dy = h.y - s.y;
         const d2 = dx * dx + dy * dy;
         if (d2 < (h.radius + 0.6) * (h.radius + 0.6) && !h.dead) {
+          // shield deflects damage entirely
+          const deflected = (s.shieldT || 0) > 0;
+          if (deflected) {
+            // deflect particles in the bounce direction
+            const ang = Math.atan2(dy, dx) + Math.PI;
+            for (let k = 0; k < 8; k++) {
+              const a = ang + (Math.random() - 0.5) * 1.0;
+              F.particles.push({
+                x: s.x, y: s.y,
+                vx: Math.cos(a) * 8, vy: Math.sin(a) * 8,
+                life: 0.4, color: '#aaccff', size: 2,
+              });
+            }
+            h.dead = true;
+            h.hit = true;
+            flashMsg('DEFLECTED');
+            Sfx.play('snap');
+            return; // skip the rest of this hazard's collision handling
+          }
           if (h.type === 'bird') s.hull -= 12;
           if (h.type === 'lightning') s.hull -= 25;
           if (h.type === 'debris') s.hull -= 30;
@@ -2903,6 +3002,20 @@
       }).length;
       stageBtn.textContent = 'STAGE' + (remaining > 1 ? ' (' + remaining + ')' : '');
     }
+
+    // ability buttons reflect remaining stock + shield active state
+    const cons = (Game && Game.getConsumables) ? Game.getConsumables() : { boost: 0, repair: 0, shield: 0 };
+    const setAbility = (selector, count, isActive) => {
+      const el = $(selector);
+      if (!el) return;
+      el.querySelector('.ct').textContent = count;
+      el.classList.toggle('empty', count <= 0);
+      el.classList.toggle('shield-active', !!isActive);
+      el.disabled = count <= 0 && !isActive;
+    };
+    setAbility('#ability-boost',  cons.boost, false);
+    setAbility('#ability-repair', cons.repair, false);
+    setAbility('#ability-shield', cons.shield, (s.shieldT || 0) > 0);
   }
 
   global.Flight = { enter, exit };

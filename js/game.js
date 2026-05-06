@@ -96,17 +96,75 @@
       }
       grid.appendChild(card);
     });
+    renderSupplies();
   }
 
   // expose for builder/flight modules
   Game.getUpgrades = function () {
     if (Game.sandbox) {
-      // sandbox: all upgrades maxed
       const maxed = {};
       UPGRADES.forEach(u => maxed[u.id] = u.max);
       return maxed;
     }
     return Game.state.upgrades || {};
+  };
+
+  // ---- consumable flight supplies --------------------------------------
+  const SUPPLIES = [
+    { id: 'boost',  name: 'EMERGENCY THRUST', cost: 5,
+      effect: '+50 m/s instant velocity boost on use.' },
+    { id: 'repair', name: 'REPAIR DRONE', cost: 8,
+      effect: '+50 hull instantly, capped at max.' },
+    { id: 'shield', name: 'SHIELD BURST', cost: 12,
+      effect: '5 seconds of damage immunity.' },
+  ];
+  Game.SUPPLIES = SUPPLIES;
+
+  function renderSupplies() {
+    const grid = $('#supplies-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    Game.state.consumables = Game.state.consumables || { boost: 0, repair: 0, shield: 0 };
+    SUPPLIES.forEach(sup => {
+      const stock = Game.state.consumables[sup.id] || 0;
+      const card = document.createElement('div');
+      card.className = 'supply-card';
+      card.innerHTML = `
+        <h4>${sup.name}</h4>
+        <div class="effect">${sup.effect}</div>
+        <div class="stock-row">
+          <span class="stock">STOCK <b>${stock}</b></span>
+        </div>
+      `;
+      const buyBtn = document.createElement('button');
+      buyBtn.textContent = 'BUY · ' + sup.cost + ' DT';
+      buyBtn.disabled = Game.state.data < sup.cost;
+      buyBtn.addEventListener('click', () => {
+        if (Game.state.data < sup.cost) return;
+        Game.state.data -= sup.cost;
+        Game.state.consumables[sup.id] = (Game.state.consumables[sup.id] || 0) + 1;
+        Storage.save(Game.state);
+        showToast('+1 ' + sup.name);
+        Sfx.play('snap');
+        renderWorkshop();
+      });
+      card.querySelector('.stock-row').appendChild(buyBtn);
+      grid.appendChild(card);
+    });
+  }
+
+  // exposed for flight to read/decrement
+  Game.getConsumables = function () {
+    if (Game.sandbox) return { boost: 99, repair: 99, shield: 99 };
+    return Game.state.consumables || { boost: 0, repair: 0, shield: 0 };
+  };
+  Game.spendConsumable = function (id) {
+    if (Game.sandbox) return true;
+    Game.state.consumables = Game.state.consumables || { boost: 0, repair: 0, shield: 0 };
+    if ((Game.state.consumables[id] || 0) <= 0) return false;
+    Game.state.consumables[id]--;
+    Storage.save(Game.state);
+    return true;
   };
 
   function refreshTitle() {

@@ -1257,6 +1257,172 @@ canvas {
   border-color: var(--nasa-blue);
 }
 
+.workshop-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 28px 0 8px;
+  padding: 8px 12px;
+  background: var(--ink);
+  border-left: 4px solid var(--caution);
+}
+.workshop-section-head h3 {
+  color: var(--caution);
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  margin: 0;
+}
+.workshop-section-head span {
+  color: var(--paper-edge);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.supplies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.supply-card {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  padding: 14px 14px 12px;
+  position: relative;
+  color: var(--ink);
+  box-shadow: 4px 4px 0 var(--shadow);
+}
+.supply-card::before {
+  content: 'SUPPLY';
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  background: var(--ink);
+  color: var(--caution);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  font-weight: 900;
+  padding: 3px 8px;
+}
+.supply-card h4 {
+  color: var(--nasa-blue);
+  font-size: 14px;
+  letter-spacing: 0.14em;
+  margin: 4px 0 6px;
+}
+.supply-card .effect {
+  color: var(--ink-soft);
+  font-size: 12px;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+.supply-card .stock-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 6px 0;
+}
+.supply-card .stock {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  font-weight: 900;
+  color: var(--ink);
+}
+.supply-card .stock b {
+  color: var(--nasa-red);
+  font-size: 16px;
+}
+.supply-card button {
+  font-family: inherit;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  padding: 6px 12px;
+  background: var(--nasa-blue);
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #062a73;
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+.supply-card button:disabled {
+  background: var(--paper-edge);
+  color: var(--ink-soft);
+  cursor: not-allowed;
+  text-shadow: none;
+  opacity: 0.6;
+}
+.supply-card button:not(:disabled):active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--shadow);
+}
+
+/* Flight HUD ability bar */
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 8px;
+  pointer-events: auto;
+}
+.ability-bar {
+  display: flex;
+  gap: 6px;
+}
+.ability-btn {
+  font-family: inherit;
+  font-weight: 900;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding: 8px 8px 6px;
+  background: var(--dsky-bg);
+  color: var(--dsky-amber);
+  border: 2px solid var(--dsky-rim);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  width: 64px;
+  position: relative;
+  text-shadow: 0 0 4px rgba(255, 177, 42, 0.5);
+  box-shadow: inset 0 0 12px rgba(0,0,0,0.6), 2px 2px 0 var(--shadow);
+}
+.ability-btn .ic {
+  font-size: 18px;
+  color: var(--dsky-green);
+  text-shadow: 0 0 6px rgba(45, 255, 133, 0.6);
+  line-height: 1;
+}
+.ability-btn .lbl { font-size: 9px; }
+.ability-btn .ct {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  background: var(--nasa-red);
+  color: var(--paper);
+  font-size: 10px;
+  font-weight: 900;
+  padding: 1px 4px;
+  border: 1px solid var(--ink);
+  letter-spacing: 0;
+  text-shadow: none;
+}
+.ability-btn:disabled,
+.ability-btn.empty {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ability-btn:not(:disabled):active {
+  transform: translate(1px, 1px);
+  background: var(--dsky-amber);
+  color: var(--ink);
+}
+.ability-btn.shield-active {
+  background: rgba(45, 255, 133, 0.2);
+  box-shadow: inset 0 0 14px rgba(45, 255, 133, 0.5), 2px 2px 0 var(--shadow);
+}
+
 .challenge-card {
   background: var(--paper);
   border: 3px solid var(--ink);

@@ -31,6 +31,11 @@
       magnet: 0,       // +30% pickup attraction radius per level
       telemetry: 0,    // +15% data earned per level
     },
+    consumables: {
+      boost:  0,  // emergency velocity boost
+      repair: 0,  // mid-flight hull repair
+      shield: 0,  // 5s damage immunity
+    },
   };
 
   function load() {

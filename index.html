@@ -156,7 +156,14 @@
       </div>
       <div class="hud-msg" id="hud-msg"></div>
       <div class="hud-bottom">
-        <button class="touch-btn touch-stage" id="touch-stage" title="Drop spent stage (S)">STAGE</button>
+        <div class="hud-row">
+          <button class="touch-btn touch-stage" id="touch-stage" title="Drop spent stage (S)">STAGE</button>
+          <div class="ability-bar">
+            <button class="ability-btn" id="ability-boost"  title="Emergency Thrust (1)"><span class="ic">&#9650;</span><span class="lbl">BOOST</span><span class="ct">0</span></button>
+            <button class="ability-btn" id="ability-repair" title="Repair Drone (2)"><span class="ic">+</span><span class="lbl">REPAIR</span><span class="ct">0</span></button>
+            <button class="ability-btn" id="ability-shield" title="Shield Burst (3)"><span class="ic">&#9711;</span><span class="lbl">SHIELD</span><span class="ct">0</span></button>
+          </div>
+        </div>
         <div class="touch-controls">
           <button class="touch-btn" id="touch-left">&larr;</button>
           <button class="touch-btn touch-thrust" id="touch-thrust">THRUST</button>
@@ -239,6 +246,12 @@
         Spend recovered scrap on permanent vehicle upgrades. Effects apply to every future launch.
       </div>
       <div class="upgrade-grid" id="upgrade-grid"></div>
+
+      <div class="workshop-section-head">
+        <h3>FLIGHT&nbsp;SUPPLIES</h3>
+        <span>Trigger 1/2/3 mid-flight. Charges spend on use. Restock with data.</span>
+      </div>
+      <div class="supplies-grid" id="supplies-grid"></div>
     </div>
   </section>
 
