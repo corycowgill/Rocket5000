@@ -36,6 +36,17 @@
       repair: 0,  // mid-flight hull repair
       shield: 0,  // 5s damage immunity
     },
+    achievements: {},
+    stats: {
+      totalLaunches: 0,
+      totalMoonshots: 0,
+      totalCrashes: 0,
+      totalPickups: 0,
+      totalStages: 0,
+      totalScrapEarned: 0,
+      highestCombo: 0,
+      highestMach: 0,
+    },
   };
 
   function load() {

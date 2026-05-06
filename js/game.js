@@ -29,6 +29,101 @@
     if (screen === 'flight') Flight.enter(Game);
     if (screen === 'challenges') renderChallenges();
     if (screen === 'workshop') renderWorkshop();
+    if (screen === 'records') renderRecords();
+  }
+
+  // ---- achievements + lifetime stats -----------------------------------
+  const ACHIEVEMENTS = [
+    { id: 'first_launch',   name: 'First Liftoff',          icon: '▲',   reward: 50,  desc: 'Complete your first launch.' },
+    { id: 'crash_10',       name: 'Plenty of Practice',     icon: '✕',   reward: 100, desc: 'Crash 10 rockets total.' },
+    { id: 'crash_100',      name: 'Spectacularly Persistent', icon: '☠', reward: 1000, desc: 'Crash 100 rockets total.' },
+    { id: 'alt_5k',         name: 'Cleared the Clouds',     icon: '☁',   reward: 100, desc: 'Reach 5,000 ft in one launch.' },
+    { id: 'alt_50k',        name: 'Stratosphere',           icon: '⌃',   reward: 200, desc: 'Reach 50,000 ft in one launch.' },
+    { id: 'alt_100k',       name: 'Karman Line',            icon: '◬',   reward: 400, desc: 'Reach 100,000 ft in one launch.' },
+    { id: 'alt_500k',       name: 'Halfway There',          icon: '◐',   reward: 800, desc: 'Reach 500,000 ft in one launch.' },
+    { id: 'moonshot',       name: 'One Small Step',         icon: '◯',   reward: 2000, desc: 'Touch the moon for the first time.' },
+    { id: 'mach_1',         name: 'Mach 1',                 icon: '⏵',   reward: 150, desc: 'Break the sound barrier in atmosphere.' },
+    { id: 'combo_5',        name: 'Pilot',                  icon: '★',   reward: 100, desc: 'Reach a PILOT combo of 5.' },
+    { id: 'combo_10',       name: 'Ace Pilot',              icon: '✦',   reward: 300, desc: 'Reach a PILOT combo of 10.' },
+    { id: 'stage_3',        name: 'Three-Stage',            icon: '⇊',   reward: 200, desc: 'Drop 3 stages in one run.' },
+    { id: 'pickup_10',      name: 'Magpie',                 icon: '◇',   reward: 100, desc: 'Collect 10 pickups in one run.' },
+    { id: 'pickup_100',     name: 'Hoarder',                icon: '◈',   reward: 500, desc: 'Collect 100 pickups lifetime.' },
+    { id: 'upgrade_first',  name: 'R&D',                    icon: '⚙',   reward: 50,  desc: 'Install your first upgrade.' },
+    { id: 'upgrade_max',    name: 'Maxed Out',              icon: '⚡',  reward: 500, desc: 'Max out any upgrade to level 3.' },
+    { id: 'ability_use',    name: 'Field Tested',           icon: '+',   reward: 50,  desc: 'Trigger any consumable mid-flight.' },
+    { id: 'storm_survive',  name: 'Storm Chaser',           icon: '⚐',   reward: 200, desc: 'Reach 10,000 ft during THUNDERSTORM.' },
+    { id: 'aurora_run',     name: 'Aurora Borealis',        icon: '〰',   reward: 200, desc: 'Reach 100,000 ft during AURORA.' },
+    { id: 'scrap_10k',      name: 'Junk Tycoon',            icon: '$',   reward: 500, desc: 'Earn 10,000 lifetime scrap.' },
+  ];
+  Game.ACHIEVEMENTS = ACHIEVEMENTS;
+
+  function ensureRecordsState() {
+    Game.state.achievements = Game.state.achievements || {};
+    Game.state.stats = Game.state.stats || {
+      totalLaunches: 0, totalMoonshots: 0, totalCrashes: 0,
+      totalPickups: 0, totalStages: 0, totalScrapEarned: 0,
+      highestCombo: 0, highestMach: 0,
+    };
+  }
+
+  Game.unlockAchievement = function (id) {
+    ensureRecordsState();
+    if (Game.state.achievements[id]) return false;
+    const a = ACHIEVEMENTS.find(x => x.id === id);
+    if (!a) return false;
+    Game.state.achievements[id] = Date.now();
+    Game.state.scrap += a.reward;
+    Game.state.stats.totalScrapEarned = (Game.state.stats.totalScrapEarned || 0) + a.reward;
+    Storage.save(Game.state);
+    showToast('★ ACHIEVEMENT · ' + a.name + ' (+' + a.reward + ' SC)', 3500);
+    Sfx.play('win');
+    return true;
+  };
+
+  function renderRecords() {
+    ensureRecordsState();
+    const st = Game.state.stats;
+    const fmt = (n, suffix) => (n || 0).toLocaleString() + (suffix || '');
+
+    // lifetime stats
+    const stats = $('#lifetime-stats');
+    stats.innerHTML = '';
+    const items = [
+      ['BEST APOGEE', formatFt(Game.state.bestAltitude)],
+      ['LAUNCHES', fmt(st.totalLaunches)],
+      ['MOONSHOTS', fmt(st.totalMoonshots)],
+      ['CRASHES', fmt(st.totalCrashes)],
+      ['PICKUPS', fmt(st.totalPickups)],
+      ['STAGES', fmt(st.totalStages)],
+      ['SCRAP EARNED', fmt(st.totalScrapEarned)],
+      ['BEST COMBO', '×' + (st.highestCombo || 0)],
+    ];
+    items.forEach(([k, v]) => {
+      const li = document.createElement('li');
+      li.innerHTML = '<span>' + k + '</span><b>' + v + '</b>';
+      stats.appendChild(li);
+    });
+
+    // achievements
+    const grid = $('#achievements-grid');
+    grid.innerHTML = '';
+    let unlocked = 0;
+    ACHIEVEMENTS.forEach(a => {
+      const has = !!Game.state.achievements[a.id];
+      if (has) unlocked++;
+      const card = document.createElement('div');
+      card.className = 'achievement-card' + (has ? '' : ' locked');
+      card.innerHTML = `
+        <div class="ach-icon">${a.icon}</div>
+        <div class="ach-info">
+          <div class="ach-name">${a.name}</div>
+          <div class="ach-desc">${a.desc}</div>
+          <span class="ach-reward">${has ? 'UNLOCKED · +' + a.reward + ' SC' : '+' + a.reward + ' SC'}</span>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+    $('#ach-progress').textContent = unlocked + ' / ' + ACHIEVEMENTS.length;
   }
 
   // ---- workshop / persistent upgrades ----------------------------------
@@ -90,6 +185,9 @@
           Storage.save(Game.state);
           showToast('INSTALLED · ' + u.name);
           Sfx.play('snap');
+          // achievements
+          Game.unlockAchievement('upgrade_first');
+          if (Game.state.upgrades[u.id] >= u.max) Game.unlockAchievement('upgrade_max');
           renderWorkshop();
         });
         card.querySelector('.upgrade-cost').appendChild(btn);
@@ -322,6 +420,30 @@
 
     state.scrap += scrapEarned;
     state.data += dataEarned;
+
+    // lifetime stats + achievement triggers
+    ensureRecordsState();
+    state.stats.totalLaunches = (state.stats.totalLaunches || 0) + 1;
+    state.stats.totalScrapEarned = (state.stats.totalScrapEarned || 0) + scrapEarned;
+    state.stats.totalPickups = (state.stats.totalPickups || 0) + (result.pickupCount || 0);
+    state.stats.totalStages = (state.stats.totalStages || 0) + (result.stageCount || 0);
+    if (result.success) state.stats.totalMoonshots = (state.stats.totalMoonshots || 0) + 1;
+    else state.stats.totalCrashes = (state.stats.totalCrashes || 0) + 1;
+
+    Game.unlockAchievement('first_launch');
+    if (result.altitude >= 5000)   Game.unlockAchievement('alt_5k');
+    if (result.altitude >= 50000)  Game.unlockAchievement('alt_50k');
+    if (result.altitude >= 100000) Game.unlockAchievement('alt_100k');
+    if (result.altitude >= 500000) Game.unlockAchievement('alt_500k');
+    if (result.success)            Game.unlockAchievement('moonshot');
+    if (result.stageCount >= 3)    Game.unlockAchievement('stage_3');
+    if ((result.pickupCount || 0) >= 10) Game.unlockAchievement('pickup_10');
+    if (state.stats.totalCrashes >= 10)  Game.unlockAchievement('crash_10');
+    if (state.stats.totalCrashes >= 100) Game.unlockAchievement('crash_100');
+    if (state.stats.totalPickups >= 100) Game.unlockAchievement('pickup_100');
+    if (state.stats.totalScrapEarned >= 10000) Game.unlockAchievement('scrap_10k');
+    if (result.modifierId === 'storm'  && result.altitude >= 10000)  Game.unlockAchievement('storm_survive');
+    if (result.modifierId === 'aurora' && result.altitude >= 100000) Game.unlockAchievement('aurora_run');
 
     // unlocks based on altitude milestones
     const unlocks = checkUnlocks(state);

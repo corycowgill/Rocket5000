@@ -339,6 +339,7 @@
       flashMsg('NO ' + id.toUpperCase() + ' STOCK');
       return false;
     }
+    if (Game.unlockAchievement) Game.unlockAchievement('ability_use');
     const s = F.sim;
     if (id === 'boost') {
       // instant velocity along thrust axis
@@ -831,6 +832,20 @@
       s.sonicBoomDone = true;
       spawnSonicBoom(s);
       flashMsg('MACH 1');
+      if (typeof Game !== 'undefined' && Game.unlockAchievement) Game.unlockAchievement('mach_1');
+    }
+    // track highest combo + mach lifetime stats
+    if (typeof Game !== 'undefined' && Game.state && Game.state.stats) {
+      if (s.combo > (Game.state.stats.highestCombo || 0)) {
+        Game.state.stats.highestCombo = s.combo;
+      }
+      const mach = speedTotal / 343;
+      if (mach > (Game.state.stats.highestMach || 0)) {
+        Game.state.stats.highestMach = mach;
+      }
+      // combo achievements fire as soon as the threshold hits
+      if (s.combo >= 5)  Game.unlockAchievement('combo_5');
+      if (s.combo >= 10) Game.unlockAchievement('combo_10');
     }
 
     // satellites drift across at high altitude

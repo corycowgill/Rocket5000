@@ -65,6 +65,7 @@
           <span class="btn-light"></span><span class="btn-label">INITIATE LAUNCH</span>
         </button>
         <button class="btn console-btn" data-go="workshop">R&amp;D LAB</button>
+        <button class="btn console-btn" data-go="records">RECORDS</button>
         <button class="btn console-btn" data-go="challenges">MISSION ROSTER</button>
         <button class="btn console-btn" data-go="sandbox">TEST RANGE</button>
         <button class="btn console-btn" data-go="help">MISSION BRIEFING</button>
@@ -252,6 +253,24 @@
         <span>Trigger 1/2/3 mid-flight. Charges spend on use. Restock with data.</span>
       </div>
       <div class="supplies-grid" id="supplies-grid"></div>
+    </div>
+  </section>
+
+  <!-- RECORDS / ACHIEVEMENTS -->
+  <section id="screen-records" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title">&larr;</button>
+      <div class="topbar-title">
+        <span class="topbar-tag">FILE&nbsp;5000-A</span>
+        <span>FLIGHT&nbsp;RECORDS</span>
+      </div>
+      <div></div>
+    </header>
+    <div class="records-body">
+      <div class="records-section-head"><h3>LIFETIME&nbsp;STATISTICS</h3></div>
+      <ul class="stats-grid dsky-list" id="lifetime-stats"></ul>
+      <div class="records-section-head"><h3>ACHIEVEMENTS</h3><span id="ach-progress"></span></div>
+      <div class="achievements-grid" id="achievements-grid"></div>
     </div>
   </section>
 
