@@ -498,7 +498,7 @@
     if (upg.turbofuel)   thrust  *= (1 + 0.05 * upg.turbofuel);
     const fuelMass = capacity * 0.05;
     const wetMass = mass + fuelMass;
-    const twr = wetMass > 0 ? (thrust * 12) / (wetMass * 9.8) : 0;
+    const twr = wetMass > 0 ? (thrust * 18) / (wetMass * 9.8) : 0;
     const stabPct = Math.min(100, Math.round(stability));
     const jankAvg = engineCount > 0 ? Math.round(jank / engineCount) : 0;
     return { mass, thrust, capacity, stability: stabPct, jank: jankAvg, hullBonus, engineCount, fuelCount, bodyCount, twr };
@@ -518,10 +518,92 @@
     // personality
     $('#rocket-personality').textContent = computePersonality(s);
 
+    // flight assessment + altitude estimate
+    const a = assessFlight(State.rocket, s);
+    const led = $('#assess-led');
+    led.classList.remove('go', 'marginal', 'nogo');
+    led.classList.add(a.status);
+    $('#assess-status').textContent = a.statusLabel;
+    const issuesEl = $('#assess-issues');
+    issuesEl.innerHTML = '';
+    a.issues.forEach(it => {
+      const li = document.createElement('li');
+      li.textContent = it.text;
+      if (it.kind === 'crit') li.classList.add('crit');
+      else if (it.kind === 'warn') li.classList.add('warn');
+      issuesEl.appendChild(li);
+    });
+    $('#assess-estimate').innerHTML = a.estimate || '';
+
     const v = validate(State.rocket);
     const launchBtn = $('#btn-launch');
     launchBtn.disabled = !v.ok;
     launchBtn.textContent = v.ok ? 'LAUNCH ↑' : v.reason.toUpperCase();
+  }
+
+  // Flight assessment: GO / MARGINAL / NO-GO + specific issues + altitude
+  // estimate. Player should be able to glance at this and know whether the
+  // rocket will fly and roughly how high.
+  function assessFlight(rocket, s) {
+    const issues = [];
+    let status = 'go';
+    const upgrade = (status, next) => {
+      const order = { go: 0, marginal: 1, nogo: 2 };
+      if (order[next] > order[status]) return next;
+      return status;
+    };
+
+    if (s.engineCount === 0) { issues.push({ kind: 'crit', text: 'Add an engine' }); status = upgrade(status, 'nogo'); }
+    if (s.fuelCount === 0)   { issues.push({ kind: 'crit', text: 'Add a fuel tank' }); status = upgrade(status, 'nogo'); }
+    if (s.bodyCount === 0)   { issues.push({ kind: 'crit', text: 'Add a body / cockpit' }); status = upgrade(status, 'nogo'); }
+    if (s.engineCount > 0 && s.fuelCount > 0 && s.bodyCount > 0) {
+      if (s.twr < 1)             { issues.push({ kind: 'crit', text: 'TWR < 1.0 — won\'t lift off' }); status = upgrade(status, 'nogo'); }
+      else if (s.twr < 1.3)      { issues.push({ kind: 'warn', text: 'TWR < 1.3 — marginal liftoff' }); status = upgrade(status, 'marginal'); }
+      if (s.twr > 6)             { issues.push({ kind: 'warn', text: 'TWR very high — fuel will burn fast' }); }
+      if (s.stability < 25)      { issues.push({ kind: 'warn', text: 'Low stability — expect heavy wobble' }); status = upgrade(status, 'marginal'); }
+      if (s.jank > 60)           { issues.push({ kind: 'warn', text: 'High jank — engine failure risk' }); status = upgrade(status, 'marginal'); }
+      if (!rocket.finId)         { issues.push({ kind: 'warn', text: 'No fins — sluggish steering' }); status = upgrade(status, 'marginal'); }
+      if (s.capacity < 80)       { issues.push({ kind: 'warn', text: 'Limited fuel — short burn' }); }
+      if (s.capacity > 0 && s.fuelCount === 1) {
+        // single-stage; informational
+        issues.push({ kind: 'info', text: 'Single stage — staging unlocks more altitude' });
+      }
+    }
+
+    // Altitude estimate — only if it can lift
+    let estimate = '';
+    if (status !== 'nogo' && s.engineCount && s.fuelCount && s.bodyCount && s.twr >= 1) {
+      // burn rate from engine parts
+      let burnRate = 0;
+      rocket.parts.forEach(pid => {
+        const p = Parts.byId(pid);
+        if (p && p.category === 'engine') burnRate += p.burnRate;
+      });
+      if (burnRate <= 0) burnRate = 1;
+      const fuelMass = s.capacity * 0.05;
+      // average mass during burn = dry + 0.5 * fuel
+      const avgMass = s.mass + 0.5 * fuelMass;
+      const aThrust = (s.thrust * 18) / avgMass; // matches flight THRUST_GAIN
+      const aNet = Math.max(0, aThrust - 9.8);
+      const burnTime = s.capacity / burnRate;
+      const vBurnout = aNet * burnTime;
+      const altBurnout = 0.5 * aNet * burnTime * burnTime;
+      const altCoast = (vBurnout * vBurnout) / (2 * 9.8);
+      const altMeters = altBurnout + altCoast;
+      const altFt = Math.max(0, altMeters * 3.281);
+      estimate = 'EST. APOGEE  <b>~' + formatAltitude(altFt) + '</b>';
+    }
+
+    const statusLabel = status === 'go'        ? '★ READY FOR LAUNCH'
+                      : status === 'marginal'  ? '⚠ MARGINAL — CAN LAUNCH'
+                                               : '✕ NO-GO';
+    return { status, statusLabel, issues, estimate };
+  }
+
+  function formatAltitude(ft) {
+    if (ft >= 1_000_000) return (ft / 1_000_000).toFixed(2) + 'M ft';
+    if (ft >= 1000)      return (ft / 1000).toFixed(1) + 'k ft';
+    return Math.floor(ft) + ' ft';
   }
 
   function updateReadout() {

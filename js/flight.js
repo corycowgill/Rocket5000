@@ -14,7 +14,7 @@
   'use strict';
 
   // ---- constants ------------------------------------------------------------
-  const THRUST_GAIN = 14;
+  const THRUST_GAIN = 18;
   const GRAVITY = 9.8;
   const FUEL_MASS_PER_L = 0.05;
   const M_TO_FT = 3.281;
@@ -570,18 +570,19 @@
 
     s.time += dt;
 
-    // controls — snappier ramp + ignition kick on first hard punch in
+    // controls — near-instant throttle response so holding feels right.
+    // (the old smoothing felt sluggish, masking the held-thrust acceleration.)
     const throttleTarget = (F.keys.thrust || F.touch.thrust) ? 1 : 0;
     const prev = s.throttle;
-    s.throttle += (throttleTarget - s.throttle) * Math.min(1, dt * 18);
-    // first-ignition kick — fires exactly once per flight so tapping
-    // doesn't stack free 4 m/s boosts
-    if (!s.firstIgnitionDone && prev < 0.2 && s.throttle >= 0.2 && s.fuel > 0) {
+    s.throttle += (throttleTarget - s.throttle) * Math.min(1, dt * 40);
+    // first-ignition kick — fires exactly once per flight, the instant
+    // throttle starts ramping up.
+    if (!s.firstIgnitionDone && prev < 0.05 && s.throttle >= 0.05 && s.fuel > 0) {
       s.firstIgnitionDone = true;
       const ax = -Math.sin(s.angle), ay = -Math.cos(s.angle);
-      s.vy += -ay * 4;
-      s.vx += -ax * 4;
-      s.shake = Math.max(s.shake || 0, 0.35);
+      s.vy += -ay * 6;
+      s.vx += -ax * 6;
+      s.shake = Math.max(s.shake || 0, 0.4);
       flashMsg('IGNITION');
     }
     // continuous engine rumble while burning
@@ -772,7 +773,7 @@
       s.crashed = true;
       s.crashReason = s.crashReason || 'STRUCTURAL FAILURE';
       flashMsg('KABOOM');
-      spawnExplosion(s.x, s.y, 3);
+      explodeRocket(s);
       Sfx.play('explosion');
     }
 
@@ -931,6 +932,107 @@
   }
 
   function flashMsg(m) { F.msg = m; F.msgT = 1.6; }
+
+  // The rocket dying: every still-attached part is launched outward as a
+  // tumbling sprite with its own mini-explosion. Then a big central blast
+  // and a long-lingering smoke cloud over the wreckage. Much more dramatic
+  // than just a particle burst.
+  function explodeRocket(s) {
+    const rocket = F.rocket;
+    if (!rocket) return;
+    // map of which parts are still attached at moment of death
+    let halfH = 0;
+    rocket.parts.forEach((pid, i) => {
+      if (s.dropped && s.dropped[i]) return;
+      const p = Parts.byId(pid);
+      if (p) halfH += p.height;
+    });
+    halfH = halfH * STACK_SCALE / 2;
+
+    // walk the stack and eject each attached part
+    let cursor = halfH;
+    rocket.parts.forEach((pid, i) => {
+      if (s.dropped && s.dropped[i]) return;
+      const p = Parts.byId(pid);
+      if (!p) return;
+      const partCenterY = cursor - (p.height * STACK_SCALE) / 2;
+      cursor -= p.height * STACK_SCALE;
+
+      // world position of this part's center, accounting for rocket rotation
+      const cosA = Math.cos(s.angle), sinA = Math.sin(s.angle);
+      // local (0, partCenterY) → world delta is rotated; STACK_SCALE→m via /(STACK_SCALE*PIXEL_PER_M_BASE)
+      const localY = partCenterY / (STACK_SCALE * 4); // approximate sprite px → world m
+      const wx = s.x + localY * sinA * -1; // upward in rocket frame
+      const wy = s.y + localY * cosA;
+
+      // outward radial direction from rocket center plus extra random scatter
+      const outAng = Math.atan2(wy - s.y, wx - s.x) + (Math.random() - 0.5) * 0.5;
+      const outSp = 6 + Math.random() * 8;
+
+      F.droppedTanks.push({
+        partId: pid,
+        x: wx, y: wy,
+        vx: Math.cos(outAng) * outSp + s.vx * 0.5 + (Math.random() - 0.5) * 4,
+        vy: Math.sin(outAng) * outSp + s.vy * 0.5 + 4 + Math.random() * 4,
+        angle: s.angle + (Math.random() - 0.5) * 0.8,
+        angVel: (Math.random() - 0.5) * 12,
+        life: 3.5 + Math.random() * 1.5,
+        // engines that were burning at death go out trailing flame
+        onFire: p.category === 'engine' && (s.fuel > 0 || Math.random() < 0.5),
+      });
+
+      // mini-explosion at this part's location
+      spawnExplosion(wx, wy, 0.5 + Math.random() * 0.4);
+      // mark dropped so the rocket sprite stops drawing this part
+      s.dropped = s.dropped || {};
+      s.dropped[i] = true;
+    });
+    // also eject the nose cone as a flying chunk
+    F.droppedTanks.push({
+      partId: '__nose',
+      x: s.x, y: s.y + halfH / 4,
+      vx: (Math.random() - 0.5) * 8 + s.vx * 0.5,
+      vy: 5 + Math.random() * 6 + s.vy * 0.5,
+      angle: (Math.random() - 0.5) * 0.6,
+      angVel: (Math.random() - 0.5) * 10,
+      life: 3.0,
+      onFire: false,
+    });
+
+    // gigantic central shockwave + cloud
+    spawnExplosion(s.x, s.y, 4);
+    // extra ring shockwave (white/blue)
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2;
+      const sp = 26 + Math.random() * 4;
+      F.particles.push({
+        x: s.x, y: s.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp,
+        life: 0.5,
+        color: i % 2 === 0 ? '#ffffff' : '#ddeeff',
+        size: 4,
+      });
+    }
+    // lingering pall of smoke
+    for (let i = 0; i < 28; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1 + Math.random() * 5;
+      F.particles.push({
+        x: s.x, y: s.y,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - 1,
+        life: 2.5 + Math.random() * 1.5,
+        color: ['#3a3a3a', '#555', '#777', '#222'][i % 4],
+        size: 6 + Math.random() * 5,
+        smoke: true,
+      });
+    }
+    // big shake
+    s.shake = Math.max(s.shake || 0, 1.0);
+    s.flash = Math.max(s.flash || 0, 0.8);
+    s.flashColor = '#ff7733';
+  }
 
   function spawnExplosion(x, y, scale) {
     // shockwave ring (a few short-lived bright particles in a circle)
@@ -1857,19 +1959,37 @@
 
   // ---- Dropped fuel tank tumbling away --------------------------------------
   function drawDroppedTank(ctx, d, worldToScreen) {
-    const part = Parts.byId(d.partId);
-    if (!part) return;
     const [sx, sy] = worldToScreen(d.x, d.y);
     const fade = Math.min(1, d.life / 1.0);
     ctx.save();
     ctx.translate(sx, sy);
     ctx.rotate(d.angle);
     ctx.globalAlpha = fade;
-    // draw the part centered, with bottom anchor at +halfH
-    const halfH = part.height * STACK_SCALE / 2;
-    // emit a sputter flame if it was burning when dropped
-    const frame = d.onFire && d.life > 1.5 ? { thrusting: true, t: (d.life * 60) | 0 } : null;
-    part.sprite(ctx, 0, halfH, STACK_SCALE, frame);
+    if (d.partId === '__nose') {
+      // tumbling nose cone fragment
+      ctx.fillStyle = '#aa3333';
+      ctx.fillRect(-12, -3, 24, 6);
+      ctx.fillStyle = '#cc4444';
+      ctx.fillRect(-12, -3, 22, 1);
+      ctx.fillStyle = '#882222';
+      ctx.fillRect(10, -3, 2, 6);
+      ctx.fillStyle = '#aa3333';
+      ctx.fillRect(-8, -9, 16, 6);
+      ctx.fillStyle = '#cc4444';
+      ctx.fillRect(-8, -9, 14, 1);
+      ctx.fillStyle = '#aa3333';
+      ctx.fillRect(-4, -15, 8, 6);
+      // tip beacon
+      ctx.fillStyle = '#ffeecc';
+      ctx.fillRect(-1, -17, 2, 2);
+    } else {
+      const part = Parts.byId(d.partId);
+      if (part) {
+        const halfH = part.height * STACK_SCALE / 2;
+        const frame = d.onFire && d.life > 1.5 ? { thrusting: true, t: (d.life * 60) | 0 } : null;
+        part.sprite(ctx, 0, halfH, STACK_SCALE, frame);
+      }
+    }
     ctx.globalAlpha = 1;
     ctx.restore();
   }
