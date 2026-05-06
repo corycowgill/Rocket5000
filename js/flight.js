@@ -207,6 +207,7 @@
       rumble: 0,
       contrailT: 0,
       launchShockwaveDone: false,
+      firstIgnitionDone: false,
       gimbal: 0,            // visual thrust-vector gimbal (radians)
       sonicBoomDone: false, // expanding ring on Mach crossing
       met: 0,               // mission elapsed time (seconds)
@@ -573,8 +574,10 @@
     const throttleTarget = (F.keys.thrust || F.touch.thrust) ? 1 : 0;
     const prev = s.throttle;
     s.throttle += (throttleTarget - s.throttle) * Math.min(1, dt * 18);
-    if (prev < 0.2 && s.throttle >= 0.2 && s.fuel > 0) {
-      // kick: gives a satisfying "punch" off the pad
+    // first-ignition kick — fires exactly once per flight so tapping
+    // doesn't stack free 4 m/s boosts
+    if (!s.firstIgnitionDone && prev < 0.2 && s.throttle >= 0.2 && s.fuel > 0) {
+      s.firstIgnitionDone = true;
       const ax = -Math.sin(s.angle), ay = -Math.cos(s.angle);
       s.vy += -ay * 4;
       s.vx += -ax * 4;
