@@ -104,6 +104,8 @@
 
   function drawSodaBottle(ctx, cx, by, s) {
     const X = cx - 16 * s, Y = by - 32 * s;
+    // wear scuff on the right side
+    px(ctx, X + 24 * s, Y + 11 * s, 1 * s, 4 * s, '#669944');
     // bottle cap with screw ridges
     cyl(ctx, X + 12 * s, Y + 0,        8 * s, 4 * s,  '#cc4422', '#ee6644', '#882211', '#441100');
     px(ctx, X + 12 * s, Y + 1 * s, 8 * s, 1 * s, '#ee6644');
@@ -270,6 +272,14 @@
     rivet(ctx, X + 14 * s, Y + 9 * s, s);
     rivet(ctx, X + 17 * s, Y + 9 * s, s);
     rivet(ctx, X + 20 * s, Y + 9 * s, s);
+    // serial stencil on the throat
+    px(ctx, X + 13 * s, Y + 12 * s, 1 * s, 1 * s, '#222');
+    px(ctx, X + 15 * s, Y + 12 * s, 1 * s, 1 * s, '#222');
+    px(ctx, X + 17 * s, Y + 12 * s, 2 * s, 1 * s, '#222');
+    // status warning sticker on the bell shoulder
+    px(ctx, X + 9 * s, Y + 18 * s, 4 * s, 2 * s, '#ffcc33');
+    px(ctx, X + 10 * s, Y + 18 * s, 1 * s, 2 * s, '#222');
+    px(ctx, X + 12 * s, Y + 18 * s, 1 * s, 2 * s, '#222');
     // fuel injection collar
     cyl(ctx, X + 11 * s, Y + 12 * s, 10 * s, 2 * s, '#555555', '#777777', '#333333', '#1a1a1a');
     // throat (narrow neck)
@@ -418,19 +428,25 @@
     rivet(ctx, X + 26 * s, Y + 30 * s, s);
     rivet(ctx, X + 5 * s,  Y + 19 * s, s);
     rivet(ctx, X + 26 * s, Y + 19 * s, s);
-    // cooling fins on the sides
+    // cooling fins on the sides — heat-tinted when thrusting
+    const finHot = frame && frame.thrusting;
+    const finTip = finHot ? '#ff7733' : '#666';
     px(ctx, X + 4 * s, Y + 12 * s, 1 * s, 12 * s, '#222');
     px(ctx, X + 27 * s, Y + 12 * s, 1 * s, 12 * s, '#222');
-    px(ctx, X + 3 * s, Y + 14 * s, 1 * s, 1 * s, '#666');
-    px(ctx, X + 3 * s, Y + 18 * s, 1 * s, 1 * s, '#666');
-    px(ctx, X + 3 * s, Y + 22 * s, 1 * s, 1 * s, '#666');
-    px(ctx, X + 28 * s, Y + 14 * s, 1 * s, 1 * s, '#666');
-    px(ctx, X + 28 * s, Y + 18 * s, 1 * s, 1 * s, '#666');
-    px(ctx, X + 28 * s, Y + 22 * s, 1 * s, 1 * s, '#666');
-    // status LEDs (red + green) at top of casing
+    px(ctx, X + 3 * s, Y + 14 * s, 1 * s, 1 * s, finTip);
+    px(ctx, X + 3 * s, Y + 18 * s, 1 * s, 1 * s, finTip);
+    px(ctx, X + 3 * s, Y + 22 * s, 1 * s, 1 * s, finTip);
+    px(ctx, X + 28 * s, Y + 14 * s, 1 * s, 1 * s, finTip);
+    px(ctx, X + 28 * s, Y + 18 * s, 1 * s, 1 * s, finTip);
+    px(ctx, X + 28 * s, Y + 22 * s, 1 * s, 1 * s, finTip);
+    // coolant hoses across the back (pixel art ribbing)
+    px(ctx, X + 4 * s, Y + 28 * s, 24 * s, 1 * s, '#3366aa');
+    px(ctx, X + 5 * s, Y + 29 * s, 22 * s, 1 * s, '#1a3358');
+    // status LEDs (red + green + blinking yellow) at top of casing
+    const blink = frame ? (frame.t % 6 < 3 ? '#ffff44' : '#666600') : '#666600';
     px(ctx, X + 8 * s, Y + 10 * s, 2 * s, 1 * s, '#ff3333');
     px(ctx, X + 11 * s, Y + 10 * s, 2 * s, 1 * s, '#88ff88');
-    px(ctx, X + 14 * s, Y + 10 * s, 2 * s, 1 * s, '#ff3333');
+    px(ctx, X + 14 * s, Y + 10 * s, 2 * s, 1 * s, blink);
     // pressure gauge dial
     rect(ctx, X + 18 * s, Y + 9 * s, 7 * s, 4 * s, '#dddddd', '#222');
     px(ctx, X + 21 * s, Y + 11 * s, 1 * s, 1 * s, '#cc0000'); // needle
@@ -499,11 +515,17 @@
     // pressure release valve (black knob, hisses when active)
     rect(ctx, X + 14 * s, Y + 0, 4 * s, 3 * s, '#222', '#000');
     px(ctx, X + 15 * s, Y + 1 * s, 2 * s, 1 * s, '#444');
-    // wisp of steam if active
-    if (frame && frame.thrusting) {
+    // wisp of steam — animated with frame.t whether thrusting or idle
+    if (frame) {
       const w = (frame.t % 6 < 3) ? 0 : 1;
-      px(ctx, X + 14 * s + w, Y - 2 * s, 1 * s, 2 * s, 'rgba(220,220,230,0.7)');
+      const tall = frame.thrusting ? 4 : 2;
+      px(ctx, X + 15 * s + w, Y - tall * s, 1 * s, tall * s, 'rgba(220,220,230,0.6)');
+      if (frame.thrusting) {
+        px(ctx, X + 16 * s - w, Y - 6 * s, 1 * s, 1 * s, 'rgba(220,220,230,0.4)');
+      }
     }
+    // tiny secondary release valve on the side
+    px(ctx, X + 25 * s, Y + 2 * s, 2 * s, 1 * s, '#222');
     // domed lid
     rect(ctx, X + 8 * s,  Y + 3 * s, 16 * s, 3 * s, '#bbbbbb', '#444444');
     rect(ctx, X + 6 * s,  Y + 6 * s, 20 * s, 2 * s, '#cccccc', '#444444');
@@ -571,10 +593,13 @@
     }
     // control panel on the right
     rect(ctx, X + 21 * s, Y + 6 * s, 6 * s, 14 * s, '#222', '#000');
-    // digital display
+    // digital display — scrolling timer-like dots
     rect(ctx, X + 22 * s, Y + 7 * s, 4 * s, 3 * s, '#0a1a10', '#000');
-    px(ctx, X + 23 * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
-    px(ctx, X + 24 * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
+    const tShift = frame ? ((frame.t * 0.4) | 0) % 4 : 0;
+    px(ctx, X + (22 + tShift) * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
+    px(ctx, X + (22 + ((tShift + 2) % 4)) * s, Y + 8 * s, 1 * s, 1 * s, '#2dff85');
+    // colon separator
+    px(ctx, X + 24 * s, Y + 7 * s, 1 * s, 1 * s, '#1f3328');
     // round buttons
     px(ctx, X + 23 * s, Y + 12 * s, 2 * s, 2 * s, '#aaa');
     px(ctx, X + 23 * s, Y + 15 * s, 2 * s, 2 * s, '#aaa');
@@ -611,9 +636,13 @@
     rect(ctx, X + 6 * s, Y + 11 * s, 20 * s, 5 * s, '#cc8822', '#552211');
     px(ctx, X + 6 * s, Y + 11 * s, 20 * s, 1 * s, '#eeaa44');
     brandRow(ctx, X + 8 * s, Y + 12 * s, s, '#ffeecc');
-    // foam bubbles overflowing the tap
+    // foam bubbles overflowing the tap (more chaos)
     px(ctx, X + 13 * s, Y + 4 * s, 1 * s, 1 * s, '#ffffff');
     px(ctx, X + 19 * s, Y + 5 * s, 1 * s, 1 * s, '#ffffff');
+    px(ctx, X + 16 * s, Y + 3 * s, 1 * s, 1 * s, '#ffffff');
+    px(ctx, X + 17 * s, Y + 6 * s, 2 * s, 1 * s, '#ffeecc'); // foam dribble down
+    // tap drip below
+    px(ctx, X + 16 * s, Y + 8 * s, 1 * s, 2 * s, '#cc9933');
     // condensation droplets
     px(ctx, X + 8 * s, Y + 21 * s, 1 * s, 1 * s, '#ddddee');
     px(ctx, X + 22 * s, Y + 23 * s, 1 * s, 1 * s, '#ddddee');
@@ -792,12 +821,16 @@
     px(ctx, X + 13 * s, Y + 19 * s, 1 * s, 8 * s, '#ff99cc');
     // trigger
     rect(ctx, X + 11 * s, Y + 20 * s, 2 * s, 4 * s, '#222', '#000');
-    // cool/hot/off slider switch
+    // cool/hot/off slider switch — slides depending on thrust state
     rect(ctx, X + 14 * s, Y + 22 * s, 4 * s, 2 * s, '#ddd', '#222');
-    px(ctx, X + 16 * s, Y + 22 * s, 1 * s, 2 * s, '#cc0000');
-    // power cord coiled at handle
+    px(ctx, X + (hot ? 17 : 14) * s, Y + 22 * s, 1 * s, 2 * s, hot ? '#cc0000' : '#3399cc');
+    // power LED — green when on
+    px(ctx, X + 19 * s, Y + 22 * s, 1 * s, 1 * s, hot ? '#88ff88' : '#226622');
+    // power cord coiled at handle, ending in plug
     px(ctx, X + 16 * s, Y + 28 * s, 1 * s, 4 * s, '#222');
     px(ctx, X + 17 * s, Y + 31 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 19 * s, Y + 30 * s, 2 * s, 2 * s, '#888'); // plug prongs
+    px(ctx, X + 20 * s, Y + 31 * s, 1 * s, 1 * s, '#222');
     if (hot) {
       flame(ctx, X + 16 * s, Y + 18 * s, 10 * s, 8 * s, frame.t,
             ['#ff5511', '#ffaa44', '#ffeeaa']);
@@ -818,9 +851,16 @@
     px(ctx, X + 26 * s, Y + 7 * s, 1 * s, 5 * s, '#222');
     rect(ctx, X + 27 * s, Y + 7 * s, 3 * s, 3 * s, '#cc3333', '#552211');
     px(ctx, X + 28 * s, Y + 8 * s, 1 * s, 1 * s, '#ee5544');
-    // gas cap
+    // gas cap with embossed F
     rect(ctx, X + 22 * s, Y + 4 * s, 4 * s, 2 * s, '#222', '#000');
     px(ctx, X + 23 * s, Y + 4 * s, 2 * s, 1 * s, '#444');
+    px(ctx, X + 24 * s, Y + 4 * s, 1 * s, 2 * s, '#666');
+    // tiny fuel-level gauge (white window with float dot)
+    rect(ctx, X + 14 * s, Y + 5 * s, 6 * s, 2 * s, '#ddffdd', '#1a3a1a');
+    px(ctx, X + 16 * s, Y + 6 * s, 1 * s, 1 * s, '#cc3333');
+    // oil cap on the other side
+    px(ctx, X + 6 * s, Y + 4 * s, 3 * s, 1 * s, '#222');
+    px(ctx, X + 7 * s, Y + 5 * s, 1 * s, 1 * s, '#444');
     // spark plug stub on top
     rect(ctx, X + 8 * s, Y + 2 * s, 2 * s, 3 * s, '#888', '#222');
     px(ctx, X + 8 * s, Y + 2 * s, 2 * s, 1 * s, '#ccc');
@@ -1057,6 +1097,11 @@
     px(ctx, X + 0 * s, Y + 8 * s, 10 * s, 1 * s, '#996644');
     // grease stain
     px(ctx, X + 4 * s, Y + 9 * s, 3 * s, 2 * s, '#aa7744');
+    // pepperoni dot showing through grease
+    px(ctx, X + 5 * s, Y + 10 * s, 2 * s, 1 * s, '#882211');
+    // cheese drip dribble at the bottom edge
+    px(ctx, X + 3 * s, Y + 13 * s, 1 * s, 2 * s, '#ffeebb');
+    px(ctx, X + 7 * s, Y + 13 * s, 1 * s, 2 * s, '#ffeebb');
     // pizza brand stripe (red)
     rect(ctx, X + 0 * s, Y + 5 * s, 10 * s, 2 * s, '#cc3333', '#552211');
     px(ctx, X + 0 * s, Y + 5 * s, 10 * s, 1 * s, '#ee5544');
@@ -1065,18 +1110,24 @@
     px(ctx, X + 3 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
     px(ctx, X + 5 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
     px(ctx, X + 7 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    // tomato icon (small red circle next to letters)
+    px(ctx, X + 9 * s, Y + 6 * s, 1 * s, 1 * s, '#ffcc33');
     // edge highlight
     px(ctx, X + 0 * s, Y + 4 * s, 10 * s, 1 * s, '#eebb88');
     // right fin (mirror)
     rect(ctx, X + 22 * s,  Y + 4 * s,  10 * s, 10 * s, '#cc9966', '#553311');
     px(ctx, X + 22 * s, Y + 8 * s, 10 * s, 1 * s, '#996644');
     px(ctx, X + 26 * s, Y + 9 * s, 3 * s, 2 * s, '#aa7744');
+    px(ctx, X + 27 * s, Y + 10 * s, 2 * s, 1 * s, '#882211'); // pepperoni
+    px(ctx, X + 25 * s, Y + 13 * s, 1 * s, 2 * s, '#ffeebb'); // cheese drip
+    px(ctx, X + 29 * s, Y + 13 * s, 1 * s, 2 * s, '#ffeebb');
     rect(ctx, X + 22 * s, Y + 5 * s, 10 * s, 2 * s, '#cc3333', '#552211');
     px(ctx, X + 22 * s, Y + 5 * s, 10 * s, 1 * s, '#ee5544');
     px(ctx, X + 24 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
     px(ctx, X + 26 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
     px(ctx, X + 28 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
     px(ctx, X + 30 * s, Y + 6 * s, 1 * s, 1 * s, '#ffeecc');
+    px(ctx, X + 22 * s, Y + 4 * s, 1 * s, 1 * s, '#ffcc33'); // tomato
     px(ctx, X + 22 * s, Y + 4 * s, 10 * s, 1 * s, '#eebb88');
     // duct tape attaching the fins
     px(ctx, X + 10 * s, Y + 6 * s, 2 * s, 6 * s, '#aaaaaa');
