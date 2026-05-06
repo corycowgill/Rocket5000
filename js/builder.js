@@ -49,11 +49,9 @@
     State.ctx.imageSmoothingEnabled = false;
     fitCanvas();
 
-    // restore last build if available and not sandbox
-    if (!State.rocket) {
-      const saved = Game.state.lastBuild;
-      State.rocket = (saved && Array.isArray(saved.parts)) ? { ...saved } : defaultRocket();
-    }
+    ensureSlots(Game);
+    // load the rocket from the active slot every time we enter the hangar
+    State.rocket = loadActiveSlot(Game);
 
     if (!State.initialized) {
       bindUI(Game);
@@ -61,11 +59,69 @@
     }
     State.selectedCat = 'engine';
     State.selectedPartId = null;
+    renderSlotTabs(Game);
     renderPartsPanel(Game);
     redraw();
     updateStats();
     refreshTopbar(Game);
     window.addEventListener('resize', () => { fitCanvas(); redraw(); });
+  }
+
+  // ---- build slots ----------------------------------------------------------
+  function ensureSlots(Game) {
+    const st = Game.state;
+    if (!Array.isArray(st.buildSlots) || st.buildSlots.length !== 3) {
+      st.buildSlots = [
+        { label: 'ALPHA',   rocket: null },
+        { label: 'BRAVO',   rocket: null },
+        { label: 'CHARLIE', rocket: null },
+      ];
+    }
+    if (typeof st.activeSlot !== 'number' || st.activeSlot < 0 || st.activeSlot > 2) {
+      st.activeSlot = 0;
+    }
+    // legacy single-build migration: if no slot has a rocket and there's a
+    // lastBuild, copy it into slot 0 once
+    const empty = st.buildSlots.every(s => !s.rocket);
+    if (empty && st.lastBuild && Array.isArray(st.lastBuild.parts)) {
+      st.buildSlots[0].rocket = { ...st.lastBuild };
+      st.lastBuild = null;
+      Storage.save(st);
+    }
+  }
+
+  function loadActiveSlot(Game) {
+    const st = Game.state;
+    const slot = st.buildSlots[st.activeSlot];
+    if (slot && slot.rocket && Array.isArray(slot.rocket.parts)) {
+      return { ...slot.rocket };
+    }
+    return defaultRocket();
+  }
+
+  function switchSlot(Game, idx) {
+    if (idx === Game.state.activeSlot) return;
+    // persist current build into its slot before switching
+    saveBuild(Game);
+    Game.state.activeSlot = idx;
+    Storage.save(Game.state);
+    State.rocket = loadActiveSlot(Game);
+    State.selectedPartId = null;
+    State.hoverIndex = -1;
+    renderSlotTabs(Game);
+    redraw();
+    updateStats();
+    Game.showToast('SLOT ' + Game.state.buildSlots[idx].label);
+  }
+
+  function renderSlotTabs(Game) {
+    $$('.slot-tab').forEach(tab => {
+      const idx = parseInt(tab.dataset.slot, 10);
+      const slot = Game.state.buildSlots[idx];
+      tab.classList.toggle('active', idx === Game.state.activeSlot);
+      tab.classList.toggle('has-build', !!(slot && slot.rocket && slot.rocket.parts && slot.rocket.parts.length));
+      tab.title = slot ? (slot.label + (slot.rocket?.name ? ' — ' + slot.rocket.name : ' — empty')) : '';
+    });
   }
 
   function fitCanvas() {
@@ -179,6 +235,13 @@
       });
     });
 
+    $$('.slot-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const idx = parseInt(tab.dataset.slot, 10);
+        switchSlot(Game, idx);
+      });
+    });
+
     $('#btn-clear').addEventListener('click', () => {
       State.rocket = defaultRocket();
       saveBuild(Game);
@@ -268,8 +331,12 @@
   }
 
   function saveBuild(Game) {
-    Game.state.lastBuild = { name: State.rocket.name, parts: State.rocket.parts.slice(), finId: State.rocket.finId };
+    const snapshot = { name: State.rocket.name, parts: State.rocket.parts.slice(), finId: State.rocket.finId };
+    if (Array.isArray(Game.state.buildSlots) && Game.state.buildSlots[Game.state.activeSlot]) {
+      Game.state.buildSlots[Game.state.activeSlot].rocket = snapshot;
+    }
     Storage.save(Game.state);
+    if ($('.slot-tab')) renderSlotTabs(Game);
   }
 
   // ---- layout / hit testing -------------------------------------------------

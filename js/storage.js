@@ -13,7 +13,13 @@
     totalLaunches: 0,
     successfulMoonshots: 0,
     unlocked: ['hairdryer', 'duct_tape', 'hairspray_cluster', 'soda_bottle', 'lawn_chair', 'trash_can', 'wheelbarrow', 'pizza_box_fin', 'cardboard_fin'],
-    lastBuild: null,
+    lastBuild: null,                    // legacy single build (kept for migration)
+    buildSlots: [
+      { label: 'ALPHA',   rocket: null },
+      { label: 'BRAVO',   rocket: null },
+      { label: 'CHARLIE', rocket: null },
+    ],
+    activeSlot: 0,
     seenChallengeId: null,
     completedChallenges: [],
     upgrades: {

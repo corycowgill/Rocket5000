@@ -663,6 +663,37 @@ canvas {
   border: 2px solid var(--caution);
   letter-spacing: 0.05em;
 }
+.slot-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.slot-tab {
+  background: var(--console-dark);
+  color: var(--paper-edge);
+  border: 2px solid var(--console-rim);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  padding: 6px 0;
+  cursor: pointer;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px var(--console-edge);
+}
+.slot-tab.active {
+  background: var(--nasa-blue);
+  color: var(--paper);
+  border-color: var(--ink);
+  box-shadow: inset 0 -2px 0 0 #062a73;
+}
+.slot-tab.has-build::after {
+  content: '·';
+  color: var(--caution);
+  margin-left: 3px;
+  font-size: 14px;
+}
 .stats-list {
   list-style: none;
   display: flex;
