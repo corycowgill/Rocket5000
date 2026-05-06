@@ -64,6 +64,7 @@
         <button class="btn btn-primary launch-cta" data-go="hangar">
           <span class="btn-light"></span><span class="btn-label">INITIATE LAUNCH</span>
         </button>
+        <button class="btn console-btn" data-go="workshop">R&amp;D LAB</button>
         <button class="btn console-btn" data-go="challenges">MISSION ROSTER</button>
         <button class="btn console-btn" data-go="sandbox">TEST RANGE</button>
         <button class="btn console-btn" data-go="help">MISSION BRIEFING</button>
@@ -212,6 +213,27 @@
         <p class="paper-fineprint">Per Directive 5000.4 §B: failure to log results constitutes failure to fail.</p>
         <button class="btn btn-primary" id="btn-sandbox-go">PROCEED TO BAY 5</button>
       </div>
+    </div>
+  </section>
+
+  <!-- WORKSHOP / R&D -->
+  <section id="screen-workshop" class="screen">
+    <header class="topbar">
+      <button class="btn btn-icon" data-go="title">&larr;</button>
+      <div class="topbar-title">
+        <span class="topbar-tag">LAB&nbsp;5</span>
+        <span>R&amp;D&nbsp;DIVISION</span>
+      </div>
+      <div class="topbar-stats">
+        <span class="stat" id="workshop-scrap">SCRAP 0</span>
+        <span class="stat" id="workshop-data">DATA 0</span>
+      </div>
+    </header>
+    <div class="workshop-body">
+      <div class="workshop-intro">
+        Spend recovered scrap on permanent vehicle upgrades. Effects apply to every future launch.
+      </div>
+      <div class="upgrade-grid" id="upgrade-grid"></div>
     </div>
   </section>
 

@@ -28,7 +28,86 @@
     if (screen === 'hangar') Builder.enter(Game);
     if (screen === 'flight') Flight.enter(Game);
     if (screen === 'challenges') renderChallenges();
+    if (screen === 'workshop') renderWorkshop();
   }
+
+  // ---- workshop / persistent upgrades ----------------------------------
+  const UPGRADES = [
+    { id: 'precision',  name: 'Precision Engineering', max: 3, baseCost: 200,
+      effect: lvl => 'Engine break chance −' + (lvl * 10) + '%' },
+    { id: 'lightweight', name: 'Lightweight Materials', max: 3, baseCost: 250,
+      effect: lvl => 'Rocket dry mass −' + (lvl * 5) + '%' },
+    { id: 'turbofuel',  name: 'Turbo Fuel Mix', max: 3, baseCost: 300,
+      effect: lvl => 'Engine thrust +' + (lvl * 5) + '%' },
+    { id: 'hull',       name: 'Reinforced Hull', max: 3, baseCost: 250,
+      effect: lvl => 'Base hull +' + (lvl * 25) },
+    { id: 'efficient',  name: 'Efficient Combustion', max: 3, baseCost: 350,
+      effect: lvl => 'Burn rate −' + (lvl * 8) + '%' },
+    { id: 'magnet',     name: 'Aerial Magnet', max: 3, baseCost: 200,
+      effect: lvl => 'Pickup attraction +' + (lvl * 30) + '%' },
+    { id: 'telemetry',  name: 'Telemetry Uplink', max: 3, baseCost: 400,
+      effect: lvl => 'Data earned +' + (lvl * 15) + '%' },
+  ];
+  Game.UPGRADES = UPGRADES;
+
+  function upgradeCost(u, lvl) {
+    // 1: base, 2: 3x base, 3: 7x base
+    if (lvl >= u.max) return -1;
+    return u.baseCost * (lvl === 0 ? 1 : (lvl === 1 ? 3 : 7));
+  }
+
+  function renderWorkshop() {
+    $('#workshop-scrap').textContent = 'SCRAP ' + Game.state.scrap;
+    $('#workshop-data').textContent  = 'DATA '  + Game.state.data;
+    const grid = $('#upgrade-grid');
+    grid.innerHTML = '';
+    Game.state.upgrades = Game.state.upgrades || {};
+    UPGRADES.forEach(u => {
+      const lvl = Game.state.upgrades[u.id] || 0;
+      const cost = upgradeCost(u, lvl);
+      const card = document.createElement('div');
+      card.className = 'upgrade-card' + (lvl >= u.max ? ' maxed' : '');
+      const pips = Array.from({ length: u.max })
+        .map((_, i) => `<div class="pip ${i < lvl ? 'lit' : ''}"></div>`).join('');
+      const nextLvl = Math.min(u.max, lvl + 1);
+      const effectText = lvl > 0 ? u.effect(lvl) + (lvl < u.max ? '   →   ' + u.effect(nextLvl) : '') : u.effect(nextLvl);
+      card.innerHTML = `
+        <h4>${u.name}</h4>
+        <div class="upgrade-effect">${effectText}</div>
+        <div class="upgrade-pips">${pips}</div>
+        <div class="upgrade-cost">
+          <span class="cost-label">${lvl >= u.max ? 'MAX LEVEL' : 'COST  ' + cost + ' SC'}</span>
+        </div>
+      `;
+      if (lvl < u.max) {
+        const btn = document.createElement('button');
+        btn.textContent = 'INSTALL';
+        btn.disabled = Game.state.scrap < cost;
+        btn.addEventListener('click', () => {
+          if (Game.state.scrap < cost) return;
+          Game.state.scrap -= cost;
+          Game.state.upgrades[u.id] = lvl + 1;
+          Storage.save(Game.state);
+          showToast('INSTALLED · ' + u.name);
+          Sfx.play('snap');
+          renderWorkshop();
+        });
+        card.querySelector('.upgrade-cost').appendChild(btn);
+      }
+      grid.appendChild(card);
+    });
+  }
+
+  // expose for builder/flight modules
+  Game.getUpgrades = function () {
+    if (Game.sandbox) {
+      // sandbox: all upgrades maxed
+      const maxed = {};
+      UPGRADES.forEach(u => maxed[u.id] = u.max);
+      return maxed;
+    }
+    return Game.state.upgrades || {};
+  };
 
   function refreshTitle() {
     $('#title-best').textContent = formatFt(Game.state.bestAltitude).toUpperCase();
@@ -157,6 +236,12 @@
     // weather modifier multiplier on the whole take
     if (result.modifierScrapMul && result.modifierScrapMul !== 1) {
       scrapEarned = Math.floor(scrapEarned * result.modifierScrapMul);
+    }
+
+    // R&D telemetry uplink: bonus data per level
+    const telemetryLvl = (state.upgrades && state.upgrades.telemetry) || 0;
+    if (telemetryLvl > 0) {
+      dataEarned = Math.floor(dataEarned * (1 + 0.15 * telemetryLvl));
     }
 
     // staging bonus — encourages multi-stage builds

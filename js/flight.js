@@ -153,6 +153,14 @@
     opts = opts || {};
     const modifier = opts.modifier || pickModifier();
     const stats = recomputeStats(rocket, {});
+    // R&D upgrades for this run
+    const upg = (typeof Game !== 'undefined' && Game.getUpgrades) ? Game.getUpgrades() : {};
+    const hullBoost   = (upg.hull       || 0) * 25;
+    const burnFactor  = 1 - 0.08 * (upg.efficient || 0);
+    const breakFactor = 1 - 0.10 * (upg.precision || 0);
+    // apply mass/thrust upgrades to the recomputed stats so physics matches builder
+    if (upg.lightweight) stats.mass   *= (1 - 0.05 * upg.lightweight);
+    if (upg.turbofuel)   stats.thrust *= (1 + 0.05 * upg.turbofuel);
     F.sim = {
       x: 0,
       y: 0,
@@ -162,12 +170,14 @@
       angVel: 0,
       fuel: stats.capacity,
       maxFuel: stats.capacity,
-      hull: 100 + stats.hullBonus,
-      maxHull: 100 + stats.hullBonus,
+      hull: 100 + stats.hullBonus + hullBoost,
+      maxHull: 100 + stats.hullBonus + hullBoost,
       dryMass: stats.mass,
       fuelMass: stats.capacity * FUEL_MASS_PER_L,
       thrust: stats.thrust,
-      burnRate: stats.burnRate,
+      burnRate: stats.burnRate * burnFactor,
+      breakFactor,
+      magnetBoost: 1 + 0.30 * (upg.magnet || 0),
       stability: stats.stability,
       jank: stats.jank,
       engines: rocket.parts.map((pid, idx) => ({ pid, idx, alive: true }))
@@ -332,8 +342,12 @@
     }
     if (!droppedNow.length) return false;
 
-    // recompute physics stats from remaining parts
+    // recompute physics stats from remaining parts (apply same upgrades)
     const next = recomputeStats(F.rocket, s.dropped);
+    const upgN = (typeof Game !== 'undefined' && Game.getUpgrades) ? Game.getUpgrades() : {};
+    if (upgN.lightweight) next.mass     *= (1 - 0.05 * upgN.lightweight);
+    if (upgN.turbofuel)   next.thrust   *= (1 + 0.05 * upgN.turbofuel);
+    if (upgN.efficient)   next.burnRate *= (1 - 0.08 * upgN.efficient);
     s.dryMass = next.mass;
     s.thrust = next.thrust;
     s.burnRate = next.burnRate;
@@ -503,7 +517,7 @@
       if (!eng.alive) return;
       const part = Parts.byId(eng.pid);
       if (!part) return;
-      if (s.throttle > 0.1 && Math.random() < part.breakChance * dt) {
+      if (s.throttle > 0.1 && Math.random() < part.breakChance * dt * (s.breakFactor || 1)) {
         eng.alive = false;
         flashMsg(part.catastrophic ? 'CORE MELTDOWN' : (part.name + ' FAILED'));
         spawnExplosion(s.x, s.y - 0.5, part.catastrophic ? 1.5 : 0.6);
@@ -2310,11 +2324,14 @@
       p.y += (p.vy + s.vy * 0.05) * dt;
 
       // attraction within radius — eases toward rocket
+      // R&D Aerial Magnet upgrade scales the radius
+      const mag = s.magnetBoost || 1;
+      const radius = 6 * mag;
       const dx = s.x - p.x, dy = s.y - p.y;
       const d2 = dx * dx + dy * dy;
-      if (d2 < 36 && d2 > 0.01) {
+      if (d2 < radius * radius && d2 > 0.01) {
         const d = Math.sqrt(d2);
-        const pull = 14 * (1 - d / 6);
+        const pull = 14 * (1 - d / radius);
         p.vx += (dx / d) * pull * dt;
         p.vy += (dy / d) * pull * dt;
       } else {

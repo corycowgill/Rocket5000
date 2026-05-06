@@ -425,6 +425,10 @@
         stability += f.stability;
       }
     }
+    // R&D upgrades — applied if available via Game.getUpgrades()
+    const upg = (typeof Game !== 'undefined' && Game.getUpgrades) ? Game.getUpgrades() : {};
+    if (upg.lightweight) mass    *= (1 - 0.05 * upg.lightweight);
+    if (upg.turbofuel)   thrust  *= (1 + 0.05 * upg.turbofuel);
     const fuelMass = capacity * 0.05;
     const wetMass = mass + fuelMass;
     const twr = wetMass > 0 ? (thrust * 12) / (wetMass * 9.8) : 0;

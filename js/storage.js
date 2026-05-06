@@ -16,6 +16,15 @@
     lastBuild: null,
     seenChallengeId: null,
     completedChallenges: [],
+    upgrades: {
+      precision: 0,    // -10% engine break chance per level
+      lightweight: 0,  // -5% rocket dry mass per level
+      turbofuel: 0,    // +5% engine thrust per level
+      hull: 0,         // +25 base hull per level
+      efficient: 0,    // -8% burn rate per level
+      magnet: 0,       // +30% pickup attraction radius per level
+      telemetry: 0,    // +15% data earned per level
+    },
   };
 
   function load() {
