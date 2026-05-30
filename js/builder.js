@@ -418,6 +418,48 @@
 
     // draw stack (bottom-up)
     const layout = getStackLayout();
+
+    // stage bands — make the auto-stacked stage grouping visible while building.
+    // STAGE 1 is the bottom (first to drop); each engine-on-fuel starts the next.
+    const stages = Parts.computeStages(State.rocket.parts);
+    if (stages.length >= 2 && layout.items.length) {
+      const bandFill = ['rgba(90,150,255,0.07)', 'rgba(255,140,70,0.07)'];
+      const bandEdge = ['rgba(120,180,255,0.55)', 'rgba(255,170,90,0.55)'];
+      const halfBand = 22 * STACK_SCALE;
+      let stageNo = 0;
+      stages.forEach((st, si) => {
+        const bandBottom = layout.items[st.idxs[0]].bottom;                  // lowest part
+        const bandTop = layout.items[st.idxs[st.idxs.length - 1]].top;       // highest part
+        const midY = (bandTop + bandBottom) / 2;
+        ctx.fillStyle = bandFill[si % bandFill.length];
+        ctx.fillRect(cx - halfBand, bandTop, halfBand * 2, bandBottom - bandTop);
+        // dashed divider between this stage and the one above it
+        if (si < stages.length - 1) {
+          ctx.strokeStyle = bandEdge[si % bandEdge.length];
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.moveTo(cx - halfBand, bandTop);
+          ctx.lineTo(cx + halfBand, bandTop);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        // label on the left: powered groups are numbered stages, bottom→top
+        const label = st.engineCount > 0 ? ('STAGE ' + (++stageNo)) : 'PAYLOAD';
+        ctx.fillStyle = bandEdge[si % bandEdge.length];
+        ctx.font = 'bold 11px ui-monospace, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(label, cx - halfBand - 8, midY);
+        // flag a stage that has an engine but no fuel above it
+        if (st.engineCount > 0 && st.fuelCount === 0) {
+          ctx.fillStyle = 'rgba(255,90,90,0.95)';
+          ctx.textAlign = 'left';
+          ctx.fillText('⚠ no fuel', cx + halfBand + 8, midY);
+        }
+      });
+      ctx.textAlign = 'center';
+    }
+
     layout.items.forEach((item, i) => {
       const part = Parts.byId(item.partId);
       const isThrusting = (part.category === 'engine'); // mock animation in builder
