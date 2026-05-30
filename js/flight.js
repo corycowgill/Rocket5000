@@ -1422,6 +1422,9 @@
 
     ctx.restore();
 
+    // stage ladder — fixed, unrotated readout of remaining stages + next drop
+    drawStageIndicator(ctx, W, H, s);
+
     // subtle CRT scanline overlay — sells the "mission control monitor" feel
     drawScanlines(ctx, W, H);
 
@@ -1433,6 +1436,45 @@
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
+  }
+
+  function drawStageIndicator(ctx, W, H, sim) {
+    if (sim.exiting) return;
+    const stages = Parts.computeStages(F.rocket.parts, sim.dropped);
+    if (stages.length < 2) return;          // single stage — nothing to show
+    const n = stages.length;
+    const segH = 20, gap = 3, segW = 30;
+    const stackH = n * segH + (n - 1) * gap;
+    const x = 16;
+    const top = H * 0.5 - stackH / 2;       // vertically centered on the left
+    ctx.save();
+    ctx.font = 'bold 10px ui-monospace, monospace';
+    ctx.textBaseline = 'middle';
+    // title above the ladder
+    ctx.fillStyle = 'rgba(200,215,245,0.8)';
+    ctx.textAlign = 'left';
+    ctx.fillText('STAGES', x, top - 11);
+    // stages[] is bottom→top; draw highest at the top of the ladder so STAGE 1
+    // (the next to drop) sits at the bottom, matching the rocket above the pad
+    for (let i = n - 1; i >= 0; i--) {
+      const isNext = (i === 0);             // bottom stage drops next
+      const y = top + (n - 1 - i) * (segH + gap);
+      const cy = y + segH / 2;
+      ctx.fillStyle = isNext ? 'rgba(255,90,70,0.85)' : 'rgba(120,150,210,0.5)';
+      ctx.fillRect(x, y, segW, segH);
+      ctx.strokeStyle = isNext ? '#ffd0a0' : 'rgba(180,200,240,0.7)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, segW - 1, segH - 1);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText('S' + (i + 1), x + segW / 2, cy);
+      if (isNext) {
+        ctx.fillStyle = '#ffd0a0';
+        ctx.textAlign = 'left';
+        ctx.fillText('▼ DROP (S)', x + segW + 6, cy);
+      }
+    }
+    ctx.restore();
   }
 
   function drawGantry(ctx, W, H, altFt, worldToScreen) {
@@ -2980,6 +3022,34 @@
       ctx.globalAlpha = 1;
       cursor -= p.height * STACK_SCALE;
     });
+
+    // separation hint: highlight the stage that drops next + show the cut line.
+    // Drawn in the rocket's rotated frame so the band hugs the actual hardware.
+    if (!sim.exiting) {
+      const remStages = Parts.computeStages(rocket.parts, sim.dropped);
+      const poweredAbove = remStages.slice(1).some(st => st.engineCount > 0);
+      if (remStages.length >= 2 && poweredAbove) {
+        let dropH = 0;
+        remStages[0].idxs.forEach(idx => {
+          const dp = Parts.byId(rocket.parts[idx]);
+          if (dp) dropH += dp.height;
+        });
+        dropH *= STACK_SCALE;
+        const cutY = totalH / 2 - dropH;          // local y of the separation plane
+        const halfW = 16 * STACK_SCALE;
+        const pulse = 0.16 + 0.12 * Math.sin(sim.time * 6);
+        ctx.fillStyle = 'rgba(255,90,70,' + pulse.toFixed(3) + ')';
+        ctx.fillRect(-halfW, cutY, halfW * 2, totalH / 2 - cutY);
+        ctx.strokeStyle = 'rgba(255,175,95,0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.beginPath();
+        ctx.moveTo(-halfW - 4, cutY);
+        ctx.lineTo(halfW + 4, cutY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
 
     // fins on bottom-most non-dropped body
     if (rocket.finId) {
