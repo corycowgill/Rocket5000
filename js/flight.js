@@ -400,27 +400,20 @@
   function jettisonStage() {
     if (!F.sim || F.sim.exiting) return false;
     const s = F.sim;
-    // find bottom-most still-attached fuel tank
-    let lowestFuelIdx = -1;
-    for (let i = 0; i < F.rocket.parts.length; i++) {
-      if (s.dropped[i]) continue;
-      const p = Parts.byId(F.rocket.parts[i]);
-      if (p && p.category === 'fuel') { lowestFuelIdx = i; break; }
-    }
-    if (lowestFuelIdx < 0) {
+    // Drop the bottom-most stage only — but never the last powered stage, or
+    // we'd jettison our only engine. There must be a stage above us that still
+    // carries an engine to keep flying.
+    const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+    const poweredAbove = stages.slice(1).some(st => st.engineCount > 0);
+    if (stages.length < 2 || !poweredAbove) {
       flashMsg('NOTHING TO STAGE');
       return false;
     }
 
-    // drop everything below + including that fuel tank that hasn't been dropped
-    const droppedNow = [];
-    for (let i = 0; i <= lowestFuelIdx; i++) {
-      if (!s.dropped[i]) {
-        s.dropped[i] = true;
-        droppedNow.push(i);
-      }
-    }
+    // drop every still-attached part in the bottom stage (its engine + fuel)
+    const droppedNow = stages[0].idxs.slice();
     if (!droppedNow.length) return false;
+    droppedNow.forEach(i => { s.dropped[i] = true; });
 
     // recompute physics stats from remaining parts (apply same upgrades)
     const next = recomputeStats(F.rocket, s.dropped);
@@ -497,12 +490,9 @@
 
   function canStage() {
     if (!F.sim) return false;
-    for (let i = 0; i < F.rocket.parts.length; i++) {
-      if (F.sim.dropped[i]) continue;
-      const p = Parts.byId(F.rocket.parts[i]);
-      if (p && p.category === 'fuel') return true;
-    }
-    return false;
+    // can stage when a bottom stage can be dropped while an upper stage keeps an engine
+    const stages = Parts.computeStages(F.rocket.parts, F.sim.dropped);
+    return stages.length >= 2 && stages.slice(1).some(st => st.engineCount > 0);
   }
 
   // ---- main loop ------------------------------------------------------------
@@ -3134,11 +3124,11 @@
     if (stageBtn) {
       const can = canStage();
       stageBtn.classList.toggle('disabled', !can);
-      const remaining = F.rocket.parts.filter((pid, i) => {
-        const p = Parts.byId(pid);
-        return p && p.category === 'fuel' && !s.dropped[i];
-      }).length;
-      stageBtn.textContent = 'STAGE' + (remaining > 1 ? ' (' + remaining + ')' : '');
+      // count powered stages still attached below the top one — that's how many
+      // more STAGE drops are available
+      const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+      const droppable = stages.length - 1;
+      stageBtn.textContent = 'STAGE' + (droppable > 1 ? ' (' + droppable + ')' : '');
     }
 
     // ability buttons reflect remaining stock + shield active state

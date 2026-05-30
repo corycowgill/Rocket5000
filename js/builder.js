@@ -310,16 +310,19 @@
     if (part.category === 'fin') {
       State.rocket.finId = part.id;
     } else {
-      // ordering rules: engines at bottom, then fuel, then body
-      const order = { engine: 0, fuel: 1, body: 2 };
-      const pri = order[part.category];
+      // Stage-aware ordering: the body/payload always rides on top, but engines
+      // and fuel keep the order you place them so you can stack real stages
+      // (engine → fuel → engine → fuel → …). A new engine placed on top of a
+      // fuel tank begins the next stage up. New body parts go to the very top;
+      // new engine/fuel slot in just below the bottom-most body part.
       let insertAt = State.rocket.parts.length;
-      for (let i = 0; i < State.rocket.parts.length; i++) {
-        const existing = Parts.byId(State.rocket.parts[i]);
-        if (!existing) continue;
-        if (order[existing.category] > pri) {
-          insertAt = i;
-          break;
+      if (part.category !== 'body') {
+        for (let i = 0; i < State.rocket.parts.length; i++) {
+          const existing = Parts.byId(State.rocket.parts[i]);
+          if (existing && existing.category === 'body') {
+            insertAt = i;
+            break;
+          }
         }
       }
       State.rocket.parts.splice(insertAt, 0, part.id);
@@ -501,7 +504,10 @@
     const twr = wetMass > 0 ? (thrust * 18) / (wetMass * 9.8) : 0;
     const stabPct = Math.min(100, Math.round(stability));
     const jankAvg = engineCount > 0 ? Math.round(jank / engineCount) : 0;
-    return { mass, thrust, capacity, stability: stabPct, jank: jankAvg, hullBonus, engineCount, fuelCount, bodyCount, twr };
+    // staging: a "stage" is a powered group (its own engine + the fuel above it)
+    const stages = Parts.computeStages(rocket.parts);
+    const stageCount = stages.filter(st => st.engineCount > 0).length;
+    return { mass, thrust, capacity, stability: stabPct, jank: jankAvg, hullBonus, engineCount, fuelCount, bodyCount, twr, stages, stageCount };
   }
 
   function updateStats() {
@@ -510,7 +516,7 @@
     $('#stat-thrust').textContent = s.thrust.toFixed(0) + ' kN';
     $('#stat-twr').textContent = s.twr.toFixed(2);
     $('#stat-fuel').textContent = s.capacity + ' L';
-    $('#stat-stages').textContent = s.fuelCount;
+    $('#stat-stages').textContent = s.stageCount;
     $('#stat-stab').textContent = s.stability + '%';
     $('#stat-jank').textContent = s.jank + '%';
     $('#rocket-name').textContent = State.rocket.name;
@@ -564,9 +570,16 @@
       if (s.jank > 60)           { issues.push({ kind: 'warn', text: 'High jank — engine failure risk' }); status = upgrade(status, 'marginal'); }
       if (!rocket.finId)         { issues.push({ kind: 'warn', text: 'No fins — sluggish steering' }); status = upgrade(status, 'marginal'); }
       if (s.capacity < 80)       { issues.push({ kind: 'warn', text: 'Limited fuel — short burn' }); }
-      if (s.capacity > 0 && s.fuelCount === 1) {
-        // single-stage; informational
-        issues.push({ kind: 'info', text: 'Single stage — staging unlocks more altitude' });
+      // staging guidance — a stage needs its own engine AND fuel above it
+      const deadStage = s.stages.some(st => st.engineCount > 0 && st.fuelCount === 0);
+      if (deadStage) {
+        issues.push({ kind: 'warn', text: 'A stage has an engine but no fuel above it' });
+        status = upgrade(status, 'marginal');
+      }
+      if (s.stageCount === 1) {
+        issues.push({ kind: 'info', text: 'Single stage — stack engine→fuel→engine→fuel for more' });
+      } else if (s.stageCount >= 2) {
+        issues.push({ kind: 'info', text: s.stageCount + ' stages — drop spent ones with S in flight' });
       }
     }
 

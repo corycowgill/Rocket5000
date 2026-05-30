@@ -1456,10 +1456,41 @@
   const byIdMap = {};
   ALL.forEach(p => byIdMap[p.id] = p);
 
+  // Group a bottom→top parts[] array into stages. A new stage begins at an
+  // engine that sits directly on top of a non-engine part: this keeps clustered
+  // engines (engine-on-engine) together in one stage, while an engine mounted on
+  // a fuel tank starts the next stage up. `skip` is an optional index→true map
+  // of already-jettisoned parts (flight) so the bottom stage is computed from
+  // whatever is still attached. Fins live on rocket.finId, not parts[], so they
+  // never appear here. Each stage: { idxs, base, engineCount, fuelCount, bodyCount }.
+  function computeStages(parts, skip) {
+    const stages = [];
+    let cur = null;
+    let prevCat = null;
+    for (let i = 0; i < parts.length; i++) {
+      if (skip && skip[i]) continue;
+      const p = byIdMap[parts[i]];
+      if (!p) continue;
+      const isEngine = p.category === 'engine';
+      const boundary = isEngine && prevCat !== null && prevCat !== 'engine';
+      if (!cur || boundary) {
+        cur = { idxs: [], base: i, engineCount: 0, fuelCount: 0, bodyCount: 0 };
+        stages.push(cur);
+      }
+      cur.idxs.push(i);
+      if (isEngine) cur.engineCount++;
+      else if (p.category === 'fuel') cur.fuelCount++;
+      else if (p.category === 'body') cur.bodyCount++;
+      prevCat = p.category;
+    }
+    return stages;
+  }
+
   global.Parts = {
     all: ALL,
     byId(id) { return byIdMap[id] || null; },
     byCategory(cat) { return ALL.filter(p => p.category === cat); },
+    computeStages,
     CATEGORY_ORDER: ['engine', 'fuel', 'body', 'fin'],
   };
 })(window);
