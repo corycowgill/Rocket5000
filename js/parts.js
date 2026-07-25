@@ -1483,6 +1483,19 @@
       else if (p.category === 'body') cur.bodyCount++;
       prevCat = p.category;
     }
+    // Parts placed below the first engine (an unusual build) form a leading
+    // group with no engine of its own. Fold it into the first powered stage
+    // instead of leaving a phantom engineless "stage" at the bottom — that
+    // phantom otherwise mislabels in the hangar and is wrongly droppable in
+    // flight. If there's no engine anywhere, leave the single group as-is.
+    if (stages.length > 1 && stages[0].engineCount === 0) {
+      const lead = stages.shift();
+      const first = stages[0];
+      first.idxs = lead.idxs.concat(first.idxs);
+      first.base = lead.base;
+      first.fuelCount += lead.fuelCount;
+      first.bodyCount += lead.bodyCount;
+    }
     return stages;
   }
 

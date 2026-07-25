@@ -484,13 +484,14 @@
     s.fuel = sumTankFuel(s);
     s.engines = s.engines.filter(e => !s.dropped[e.idx]);
 
-    // separation kick proportional to throttle (explosive bolts)
+    // separation kick proportional to throttle (explosive bolts) — pushes the
+    // vehicle along its own forward axis, so a tilted rocket gets a tilted nudge
+    // instead of always shoving straight up in world space
     const kick = 5 + s.throttle * 6;
     const ax = -Math.sin(s.angle);
     const ay = -Math.cos(s.angle);
-    // kick the rocket forward (opposite of dropped direction = forward thrust direction)
-    s.vx += -ax * 0; // mostly vertical kick
-    s.vy += kick;
+    s.vx += -ax * kick; // forward (= thrust) direction; equals world-up at angle 0
+    s.vy += -ay * kick;
 
     // visual: spawn debris flying away from rocket bottom
     spawnStageDebris(s, droppedNow);

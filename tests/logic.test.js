@@ -41,6 +41,29 @@ test('computeStages: cluster plus a second stage', () => {
   assert.equal(stages[1].engineCount, 1);
 });
 
+test('computeStages: fuel below the first engine folds into stage 1 (no phantom stage)', () => {
+  // [F, E, F, B] must be ONE powered stage, not an engineless bottom group
+  const stages = Parts.computeStages([F, E, F, B]);
+  assert.equal(stages.length, 1);
+  assert.equal(stages[0].engineCount, 1);
+  assert.deepEqual(stages[0].idxs, [0, 1, 2, 3]);
+});
+
+test('computeStages: leading fuel merges but real stages are preserved', () => {
+  // [F, E, F, E, F, B] → two powered stages; leading fuel joins stage 1
+  const stages = Parts.computeStages([F, E, F, E, F, B]);
+  assert.equal(stages.length, 2);
+  assert.deepEqual(stages[0].idxs, [0, 1, 2]);
+  assert.deepEqual(stages[1].idxs, [3, 4, 5]);
+  assert.ok(stages.every(s => s.engineCount > 0));
+});
+
+test('computeStages: engineless build stays a single group', () => {
+  const stages = Parts.computeStages([F, F, B]); // no engine at all
+  assert.equal(stages.length, 1);
+  assert.equal(stages[0].engineCount, 0);
+});
+
 test('computeStages: skip map ignores dropped parts (flight staging)', () => {
   // drop the bottom stage [0,1]; only the upper stage should remain
   const stages = Parts.computeStages([E, F, E, F, B], { 0: true, 1: true });
