@@ -75,6 +75,10 @@
     F.canvas = $('#flight-canvas');
     F.ctx = F.canvas.getContext('2d');
     F.ctx.imageSmoothingEnabled = false;
+    // respect the OS "reduce motion" setting: damp screen shake and skip the
+    // full-screen impact/milestone flashes for motion-sensitive players
+    F.reducedMotion = !!(window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
     const r = Game.lastRocket || Builder.getCurrentRocket();
     F.rocket = r;
@@ -1276,7 +1280,8 @@
     // screen shake (impacts) + rumble (continuous while burning)
     let shakeX = 0, shakeY = 0;
     const rumble = s.rumble || 0;
-    const shakeAmp = (s.shake > 0 ? s.shake * 8 : 0) + rumble * 6;
+    let shakeAmp = (s.shake > 0 ? s.shake * 8 : 0) + rumble * 6;
+    if (F.reducedMotion) shakeAmp *= 0.15;
     if (shakeAmp > 0) {
       shakeX = (Math.random() - 0.5) * shakeAmp;
       shakeY = (Math.random() - 0.5) * shakeAmp;
@@ -1428,8 +1433,8 @@
     // subtle CRT scanline overlay — sells the "mission control monitor" feel
     drawScanlines(ctx, W, H);
 
-    // milestone / damage screen flash on top
-    if (s.flash > 0) {
+    // milestone / damage screen flash on top (suppressed under reduced motion)
+    if (s.flash > 0 && !F.reducedMotion) {
       const a = Math.min(0.5, s.flash * 0.5);
       ctx.fillStyle = s.flashColor;
       ctx.globalAlpha = a;

@@ -52,12 +52,32 @@
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return { ...DEFAULTS };
+      if (!raw) return deepMerge({}, DEFAULTS);
       const parsed = JSON.parse(raw);
-      return { ...DEFAULTS, ...parsed };
+      // deep-merge so newly-added nested default keys (a new upgrade, a new
+      // stat) reach existing saves instead of being dropped by a shallow spread
+      return deepMerge(parsed, DEFAULTS);
     } catch (e) {
-      return { ...DEFAULTS };
+      return deepMerge({}, DEFAULTS);
     }
+  }
+
+  // Fill any key missing from `base` with the value from `defaults`, recursing
+  // into plain objects. Arrays and existing scalar values in `base` are kept
+  // as-is (the player's data wins); only genuinely-absent keys are backfilled.
+  function deepMerge(base, defaults) {
+    const isPlain = v => v && typeof v === 'object' && !Array.isArray(v);
+    const out = isPlain(base) ? { ...base } : (base === undefined ? undefined : base);
+    if (!isPlain(defaults)) return out === undefined ? defaults : out;
+    const result = isPlain(out) ? out : {};
+    for (const k of Object.keys(defaults)) {
+      if (isPlain(defaults[k])) {
+        result[k] = deepMerge(isPlain(result[k]) ? result[k] : {}, defaults[k]);
+      } else if (!(k in result)) {
+        result[k] = defaults[k];
+      }
+    }
+    return result;
   }
 
   function save(state) {
@@ -72,5 +92,9 @@
     try { localStorage.removeItem(KEY); } catch (e) {}
   }
 
-  global.Storage = { load, save, reset, DEFAULTS };
-})(window);
+  global.Storage = { load, save, reset, deepMerge, DEFAULTS };
+})(typeof window !== 'undefined' ? window : globalThis);
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = (typeof window !== 'undefined' ? window : globalThis).Storage;
+}

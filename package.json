@@ -1,0 +1,9 @@
+{
+  "name": "scrap-rocket-5000",
+  "version": "1.0.0",
+  "description": "Scrap Rocket 5000 — Moonshot Mayhem",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}

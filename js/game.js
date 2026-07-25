@@ -323,9 +323,39 @@
       { id: 'lightweight', title: 'FEATHERWEIGHT', description: 'Launch a rocket weighing under 200 kg and reach 10,000 ft.', reward: 120, dataReward: 6, target: 10000, restrict: 'maxMass:200' },
       { id: 'apex', title: 'APEX PREDATOR', description: 'Reach 50,000 ft. No restrictions.', reward: 200, dataReward: 10, target: 50000, restrict: null },
     ];
-    const choice = pool[Math.floor(rng() * pool.length)];
-    return [choice];
+    // pick 3 distinct challenges for the day, deterministically (Fisher–Yates
+    // driven by the seeded rng so everyone sees the same roster each day)
+    const order = pool.slice();
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order.slice(0, 3);
   }
+
+  // Check a rocket against a challenge restriction. Returns { ok, reason }.
+  // Kept here (not in the builder) so both launch-gating and reward-granting
+  // use exactly the same rule.
+  function challengeRestrictionCheck(rocket, restrict) {
+    if (!restrict) return { ok: true };
+    const s = Builder.getStats(rocket);
+    if (restrict === 'starter') {
+      const starter = Storage.DEFAULTS.unlocked;
+      const ids = rocket.parts.slice();
+      if (rocket.finId) ids.push(rocket.finId);
+      const bad = ids.find(pid => starter.indexOf(pid) === -1);
+      if (bad) return { ok: false, reason: 'Starter parts only' };
+    } else if (restrict === 'oneEngine') {
+      if (s.engineCount !== 1) return { ok: false, reason: 'Exactly one engine' };
+    } else if (restrict === 'noFins') {
+      if (rocket.finId) return { ok: false, reason: 'No fins allowed' };
+    } else if (restrict.indexOf('maxMass:') === 0) {
+      const cap = parseFloat(restrict.split(':')[1]);
+      if (s.mass >= cap) return { ok: false, reason: 'Must weigh under ' + cap + ' kg' };
+    }
+    return { ok: true };
+  }
+  Game.challengeRestrictionCheck = challengeRestrictionCheck;
 
   function mulberry32(a) {
     return function () {
@@ -348,6 +378,14 @@
       if (!validation.ok) {
         showToast(validation.reason);
         return;
+      }
+      // if a challenge is active, its build restriction must be satisfied to launch
+      if (Game.activeChallenge) {
+        const rc = challengeRestrictionCheck(rocket, Game.activeChallenge.restrict);
+        if (!rc.ok) {
+          showToast('CHALLENGE: ' + rc.reason);
+          return;
+        }
       }
       Sfx.play('launch');
       Game.lastRocket = rocket;
@@ -408,7 +446,8 @@
     // challenge bonus
     if (Game.activeChallenge) {
       const ch = Game.activeChallenge;
-      const challengeMet = result.altitude >= ch.target &&
+      const restrictOk = challengeRestrictionCheck(Game.lastRocket, ch.restrict).ok;
+      const challengeMet = restrictOk && result.altitude >= ch.target &&
         (state.completedChallenges.indexOf(ch.id + ':' + new Date().toDateString()) === -1);
       if (challengeMet) {
         scrapEarned += ch.reward;
