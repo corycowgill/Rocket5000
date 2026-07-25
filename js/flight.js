@@ -285,6 +285,23 @@
     }
     s.fuel = sumTankFuel(s);
   }
+  // true once EVERY tank in the bottom stage is empty — the whole stage is then
+  // dead weight worth jettisoning. Checking the whole stage (not just the lowest
+  // tank) avoids nudging a premature drop that would waste a still-full tank.
+  function bottomStageDry(s) {
+    const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+    if (!stages.length) return false;
+    let hasTank = false;
+    for (const i of stages[0].idxs) {
+      const p = Parts.byId(F.rocket.parts[i]);
+      if (p && p.category === 'fuel') {
+        hasTank = true;
+        if ((s.tankFuel[i] || 0) > 0) return false;
+      }
+    }
+    return hasTank;
+  }
+
   function addFuel(s, amount) {
     const parts = F.rocket.parts;
     let left = amount;
@@ -483,6 +500,7 @@
     s.fuelMass = next.capacity * FUEL_MASS_PER_L;
     s.fuel = sumTankFuel(s);
     s.engines = s.engines.filter(e => !s.dropped[e.idx]);
+    s.stagePrompted = false;   // re-arm the "stage dry" cue for the next stage
 
     // separation kick proportional to throttle (explosive bolts) — pushes the
     // vehicle along its own forward axis, so a tilted rocket gets a tilted nudge
@@ -673,6 +691,14 @@
     }
 
     if (s.fuel <= 0) s.throttle = 0;
+
+    // stage-timing cue: once the bottom tank runs dry it's pure dead weight, and
+    // dropping it before the coast is worth a big apogee gain — but the player
+    // can't see per-tank levels, so nudge them exactly once when it empties
+    if (!s.stagePrompted && bottomStageDry(s) && canStage()) {
+      flashMsg('BOTTOM STAGE DRY — STAGE (S)');
+      s.stagePrompted = true;
+    }
 
     // mass (decreases with fuel) — guard divide-by-zero after staging the
     // last fuel tank: when capacity hits 0 there's no fuel mass to add.
