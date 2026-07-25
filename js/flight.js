@@ -220,6 +220,12 @@
       pickupCount: 0,       // total pickups grabbed
       shieldT: 0,           // remaining seconds of damage immunity
     };
+    // per-tank fuel: each fuel part starts full; s.fuel is their attached total
+    F.sim.tankFuel = {};
+    rocket.parts.forEach((pid, i) => {
+      const p = Parts.byId(pid);
+      if (p && p.category === 'fuel') F.sim.tankFuel[i] = p.capacity;
+    });
   }
 
   function recomputeStats(rocket, dropped) {
@@ -251,6 +257,48 @@
       stability: Math.min(100, Math.round(stability)),
       jank: engineCount > 0 ? Math.round(jank / engineCount) : 0,
     };
+  }
+
+  // ---- per-tank fuel --------------------------------------------------------
+  // Burn drains the lowest still-attached tank first, so the bottom (active)
+  // stage empties before the stages above it. Staging then sheds an already-
+  // spent tank while the upper stages keep their fuel — that's what makes a
+  // multi-stage build climb higher than a single stack of the same parts.
+  // s.fuel stays the attached total (HUD + physics: mass grows with s.fuel).
+  function sumTankFuel(s) {
+    let sum = 0;
+    for (const k in s.tankFuel) {
+      if (!(s.dropped && s.dropped[k])) sum += s.tankFuel[k];
+    }
+    return sum;
+  }
+  function drainFuel(s, amount) {
+    const parts = F.rocket.parts;
+    let left = amount;
+    for (let i = 0; i < parts.length && left > 0; i++) {
+      if (s.dropped && s.dropped[i]) continue;
+      const have = s.tankFuel[i] || 0;
+      if (have <= 0) continue;
+      const take = Math.min(have, left);
+      s.tankFuel[i] = have - take;
+      left -= take;
+    }
+    s.fuel = sumTankFuel(s);
+  }
+  function addFuel(s, amount) {
+    const parts = F.rocket.parts;
+    let left = amount;
+    for (let i = 0; i < parts.length && left > 0; i++) {
+      if (s.dropped && s.dropped[i]) continue;
+      const p = Parts.byId(parts[i]);
+      if (!p || p.category !== 'fuel') continue;
+      const room = p.capacity - (s.tankFuel[i] || 0);
+      if (room <= 0) continue;
+      const put = Math.min(room, left);
+      s.tankFuel[i] = (s.tankFuel[i] || 0) + put;
+      left -= put;
+    }
+    s.fuel = sumTankFuel(s);
   }
 
   function pickModifier() {
@@ -430,10 +478,10 @@
     s.burnRate = next.burnRate;
     s.stability = next.stability;
     s.jank = next.jank;
-    // fuel pool clamps to remaining tank capacity
-    if (s.fuel > next.capacity) s.fuel = next.capacity;
+    // the dropped stage's tanks leave with it; upper stages keep their fuel
     s.maxFuel = next.capacity;
     s.fuelMass = next.capacity * FUEL_MASS_PER_L;
+    s.fuel = sumTankFuel(s);
     s.engines = s.engines.filter(e => !s.dropped[e.idx]);
 
     // separation kick proportional to throttle (explosive bolts)
@@ -620,7 +668,7 @@
     const burningEngines = s.engines.filter(e => e.alive).length;
     if (s.throttle > 0.05 && s.fuel > 0 && burningEngines > 0) {
       const burn = s.burnRate * s.throttle * dt;
-      s.fuel = Math.max(0, s.fuel - burn);
+      drainFuel(s, burn); // lowest attached tank first (bottom stage burns first)
     }
 
     if (s.fuel <= 0) s.throttle = 0;
@@ -2645,8 +2693,7 @@
   function collectPickup(p, s) {
     if (p.type === 'scrap')  s.pickupScrap += 50;
     if (p.type === 'fuel') {
-      const add = s.maxFuel * 0.20;
-      s.fuel = Math.min(s.maxFuel, s.fuel + add);
+      addFuel(s, s.maxFuel * 0.20); // tops up attached tanks, bottom-first
     }
     if (p.type === 'repair') {
       s.hull = Math.min(s.maxHull, s.hull + 30);
