@@ -272,9 +272,40 @@
     return true;
   };
 
+  const MOON_FT = 1000000;
+
   function refreshTitle() {
     $('#title-best').textContent = formatFt(Game.state.bestAltitude).toUpperCase();
     $('#title-scrap').textContent = Game.state.scrap.toString();
+    refreshMoonProgress();
+  }
+
+  // The moon is the actual win condition but the game never showed how far off
+  // you are, or that reaching it needs a multi-stage rocket. Starter parts top
+  // out near 9% of the way, so the note doubles as the next concrete goal.
+  function refreshMoonProgress() {
+    const fillEl = $('#moon-fill');
+    if (!fillEl) return;
+    const best = Game.state.bestAltitude || 0;
+    const done = (Game.state.stats && Game.state.stats.totalMoonshots > 0) ||
+                 Game.state.successfulMoonshots > 0;
+    const pct = Math.max(0, Math.min(100, (best / MOON_FT) * 100));
+    // a sqrt curve keeps early progress visible — linear leaves the bar looking
+    // empty for the whole first half of the game
+    fillEl.style.width = (done ? 100 : Math.sqrt(pct / 100) * 100).toFixed(1) + '%';
+    fillEl.classList.toggle('complete', done);
+    $('#moon-pct').textContent = done ? 'LANDED' : (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
+    $('#moon-note').textContent = done
+      ? 'MOONSHOT CONFIRMED · ' + formatFt(best).toUpperCase()
+      : nextGoalHint(best);
+  }
+
+  function nextGoalHint(best) {
+    if (best < 5000)    return 'NEXT: 5,000 FT — UNLOCKS BETTER PARTS';
+    if (best < 20000)   return 'NEXT: 20,000 FT — STACK A SECOND STAGE';
+    if (best < 100000)  return 'NEXT: 100,000 FT — UNLOCKS HEAVY ENGINES';
+    if (best < 200000)  return 'NEXT: 200,000 FT — TOP-TIER HARDWARE';
+    return 'THE MOON NEEDS 3+ STAGES · 1,000,000 FT';
   }
 
   function formatFt(v) {
