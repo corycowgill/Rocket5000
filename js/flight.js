@@ -103,9 +103,11 @@
     fitCanvas();
     if (!F.started) {
       bindControls(Game);
+      // inside the guard: this used to re-register on every flight, so after N
+      // launches a single resize ran fitCanvas N times
+      window.addEventListener('resize', fitCanvas);
       F.started = true;
     }
-    window.addEventListener('resize', fitCanvas);
 
     Sfx.startEngine();
     F.lastT = performance.now();
@@ -408,6 +410,12 @@
 
   function useAbility(id) {
     if (!F.sim || F.sim.exiting) return false;
+    // don't burn a repair drone that can't heal anything — the stock was spent
+    // before this check, so a full-hull tap silently cost the player an item
+    if (id === 'repair' && F.sim.hull >= F.sim.maxHull) {
+      flashMsg('HULL ALREADY FULL');
+      return false;
+    }
     if (!Game.spendConsumable(id)) {
       flashMsg('NO ' + id.toUpperCase() + ' STOCK');
       return false;
@@ -851,13 +859,29 @@
       }
     }
 
-    // tumbling check
-    if (Math.abs(s.angle) > Math.PI && altFt > 200) {
+    // Terminal state for a vehicle at rest on the ground with nothing left to
+    // burn. `crashed` is otherwise only set by hull loss, so a gentle touchdown
+    // — or a rocket that never lifted off at all (Builder.validate admits any
+    // TWR >= 0.5, but you need > 1.0 to beat gravity) — would sit here forever:
+    // no result screen and no abort button, forcing a page reload.
+    if (!s.crashed && !s.moonReached && s.y <= 0 && s.fuel <= 0 &&
+        Math.abs(s.vy) < 0.5 && s.time > 3) {
+      s.crashed = true;
+      s.crashReason = s.maxAltitudeM > 3 ? 'LANDED' : 'NEVER LEFT THE PAD';
+    }
+
+    // tumbling check — compare the WRAPPED angle. s.angle accumulates without
+    // normalization, so a completed 360 roll (angle = 2pi) renders upright yet
+    // would otherwise count as tumbling forever and drain hull to death.
+    const wrappedAngle = Math.atan2(Math.sin(s.angle), Math.cos(s.angle));
+    if (Math.abs(wrappedAngle) > 2.5 && altFt > 200) {
       s.hull -= 30 * dt;
       if (!s.tumbling) {
         flashMsg('TUMBLING!');
         s.tumbling = true;
       }
+    } else {
+      s.tumbling = false;   // re-arm the cue once the player recovers
     }
 
     // hull check
@@ -1209,6 +1233,13 @@
       h.y += h.vy * dt;
       h.t += dt;
 
+      // Track the CLOSEST approach each frame. The combo check used to measure
+      // distance in the GC filter — i.e. at the moment a hazard is removed for
+      // being far away — so a genuine near miss was almost never detected.
+      const ndx = h.x - s.x, ndy = h.y - s.y;
+      const nd2 = ndx * ndx + ndy * ndy;
+      if (h.minD2 === undefined || nd2 < h.minD2) h.minD2 = nd2;
+
       // lightning telegraphs for ~0.8s before activating, then dies after dieAt
       if (h.type === 'lightning' && !h.armed && h.t > h.telegraph) {
         h.armed = true;
@@ -1271,16 +1302,19 @@
 
     // garbage collect & combo: hazards passing within close range without hitting
     F.hazards = F.hazards.filter(h => {
+      // Scale the vertical cull window with speed. A fixed 30 m window culled
+      // every hazard within ~0.2 s at flight speeds (100-300 m/s), long before
+      // a laterally-approaching bird or debris could ever reach the rocket.
+      const rangeY = 30 + Math.abs(s.vy) * 1.5;
       const farX = Math.abs(h.x - s.x) > 30;
-      const farY = Math.abs(h.y - s.y) > 30;
+      const farY = Math.abs(h.y - s.y) > rangeY;
       const expired = h.t > 6;
       const offscreen = farX || farY || expired;
       if ((h.dead || offscreen) && !h.counted) {
         h.counted = true;
         if (!h.hit && h.t > 0.4) {
-          // close pass = combo
-          const dx = h.x - s.x, dy = h.y - s.y;
-          const d2 = dx * dx + dy * dy;
+          // close pass = combo, judged on closest approach over the hazard's life
+          const d2 = h.minD2 !== undefined ? h.minD2 : Infinity;
           if (d2 < 25) {
             s.combo += 1;
             s.comboT = 3.0;
@@ -1330,23 +1364,31 @@
 
   function makeHazard(type, s) {
     const side = Math.random() < 0.5 ? -1 : 1;
+    // Lateral hazards close at only 5-9 m/s from 28 m out, which takes 3-5 s.
+    // Their vy is therefore expressed in the ROCKET's frame — a world-frame vy
+    // near zero meant a rocket climbing at 100-300 m/s left every hazard behind
+    // long before it could arrive, so nothing ever hit.
     if (type === 'bird') {
       return {
         type, x: s.x + side * 28 + (Math.random() - 0.5) * 4,
         y: s.y + (Math.random() - 0.3) * 14,
         vx: -side * (5 + Math.random() * 3),
-        vy: (Math.random() - 0.5) * 2,
+        vy: s.vy + (Math.random() - 0.5) * 2,
         radius: 0.7, t: 0, dead: false, telegraph: 0,
       };
     }
     if (type === 'lightning') {
       // strike where the rocket WILL be in `lookahead` seconds — player dodges
       // by changing course mid-telegraph
+      // Clamp the lead: at |vy| > 60 the raw lookahead put the bolt outside the
+      // cull window on its very first frame, so it was deleted before arming —
+      // lightning never struck at all, making the storm/aurora modifiers inert.
       const lookahead = 0.5;
+      const lead = Math.max(-25, Math.min(25, s.vy * lookahead));
       return {
         type,
         x: s.x + s.vx * lookahead + (Math.random() - 0.5) * 4,
-        y: s.y + s.vy * lookahead,
+        y: s.y + lead,
         vx: 0, vy: 0,
         radius: 1.4,
         t: 0,
@@ -1361,7 +1403,7 @@
         type, x: s.x + side * 28 + (Math.random() - 0.5) * 8,
         y: s.y + 6 + Math.random() * 18,
         vx: -side * (6 + Math.random() * 3),
-        vy: -(2 + Math.random() * 4),
+        vy: s.vy - (2 + Math.random() * 4),
         radius: 0.9, t: 0, dead: false, telegraph: 0,
         spin: (Math.random() - 0.5) * 6,
       };
@@ -2741,9 +2783,11 @@
       }
     });
 
-    // GC: collected, or far past the rocket
+    // GC: collected, or far from the rocket. The vertical test must be absolute
+    // — the one-sided form never culled pickups ABOVE the rocket, so a descent
+    // stranded them at the spawn cap and blocked new pickups for the whole run.
     F.pickups = F.pickups.filter(p =>
-      !p.collected && (s.y - p.y) < 80 && Math.abs(p.x - s.x) < 80
+      !p.collected && Math.abs(s.y - p.y) < 80 && Math.abs(p.x - s.x) < 80
     );
   }
 

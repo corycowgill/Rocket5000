@@ -761,7 +761,9 @@
     if (s.engineCount === 0) return { ok: false, reason: 'Need an engine' };
     if (s.fuelCount === 0)   return { ok: false, reason: 'Need fuel' };
     if (s.bodyCount === 0)   return { ok: false, reason: 'Need a body' };
-    if (s.twr < 0.5)         return { ok: false, reason: 'Too heavy to lift' };
+    // TWR must exceed 1.0 to beat gravity at all — anything less never leaves
+    // the pad, it just burns its fuel standing still
+    if (s.twr < 1.0)         return { ok: false, reason: 'Too heavy to lift' };
     return { ok: true };
   }
 
