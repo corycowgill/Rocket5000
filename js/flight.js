@@ -225,6 +225,9 @@
       pickupCount: 0,       // total pickups grabbed
       shieldT: 0,           // remaining seconds of damage immunity
     };
+    // drop the previous flight's stage cache — leaving the hangar without
+    // crashing can carry dropVersion 0 across into a different rocket
+    F._stageCache = null;
     // per-tank fuel: each fuel part starts full; s.fuel is their attached total
     F.sim.tankFuel = {};
     rocket.parts.forEach((pid, i) => {
@@ -290,11 +293,24 @@
     }
     s.fuel = sumTankFuel(s);
   }
+  // computeStages allocates a fresh array of stage objects on every call, and it
+  // was being run ~6x per frame from update/render/HUD even though the grouping
+  // only changes when parts are actually jettisoned. Cache it against a version
+  // counter bumped wherever sim.dropped is written (staging and death).
+  // Callers only read the result — nothing mutates it — so sharing is safe.
+  function currentStages(s) {
+    const v = s.dropVersion || 0;
+    if (F._stageCache && F._stageCache.v === v) return F._stageCache.stages;
+    const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+    F._stageCache = { v, stages };
+    return stages;
+  }
+
   // true once EVERY tank in the bottom stage is empty — the whole stage is then
   // dead weight worth jettisoning. Checking the whole stage (not just the lowest
   // tank) avoids nudging a premature drop that would waste a still-full tank.
   function bottomStageDry(s) {
-    const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+    const stages = currentStages(s);
     if (!stages.length) return false;
     let hasTank = false;
     for (const i of stages[0].idxs) {
@@ -505,6 +521,7 @@
     const droppedNow = stages[0].idxs.slice();
     if (!droppedNow.length) return false;
     droppedNow.forEach(i => { s.dropped[i] = true; });
+    s.dropVersion = (s.dropVersion || 0) + 1;   // invalidate the stage cache
 
     // recompute physics stats from remaining parts (apply same upgrades)
     const next = recomputeStats(F.rocket, s.dropped);
@@ -593,7 +610,7 @@
   function canStage() {
     if (!F.sim) return false;
     // can stage when a bottom stage can be dropped while an upper stage keeps an engine
-    const stages = Parts.computeStages(F.rocket.parts, F.sim.dropped);
+    const stages = currentStages(F.sim);
     return stages.length >= 2 && stages.slice(1).some(st => st.engineCount > 0);
   }
 
@@ -1106,6 +1123,7 @@
       // mark dropped so the rocket sprite stops drawing this part
       s.dropped = s.dropped || {};
       s.dropped[i] = true;
+      s.dropVersion = (s.dropVersion || 0) + 1;
     });
     // also eject the nose cone as a flying chunk
     F.droppedTanks.push({
@@ -1589,7 +1607,7 @@
 
   function drawStageIndicator(ctx, W, H, sim) {
     if (sim.exiting) return;
-    const stages = Parts.computeStages(F.rocket.parts, sim.dropped);
+    const stages = currentStages(sim);
     if (stages.length < 2) return;          // single stage — nothing to show
     const n = stages.length;
     const segH = 20, gap = 3, segW = 30;
@@ -3196,7 +3214,7 @@
     // separation hint: highlight the stage that drops next + show the cut line.
     // Drawn in the rocket's rotated frame so the band hugs the actual hardware.
     if (!sim.exiting) {
-      const remStages = Parts.computeStages(rocket.parts, sim.dropped);
+      const remStages = currentStages(sim);
       const poweredAbove = remStages.slice(1).some(st => st.engineCount > 0);
       if (remStages.length >= 2 && poweredAbove) {
         let dropH = 0;
@@ -3366,7 +3384,7 @@
       stageBtn.classList.toggle('disabled', !can);
       // count powered stages still attached below the top one — that's how many
       // more STAGE drops are available
-      const stages = Parts.computeStages(F.rocket.parts, s.dropped);
+      const stages = currentStages(s);
       const droppable = stages.length - 1;
       stageBtn.textContent = 'STAGE' + (droppable > 1 ? ' (' + droppable + ')' : '');
     }
