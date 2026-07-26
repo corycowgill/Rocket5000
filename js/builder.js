@@ -615,6 +615,19 @@
       return status;
     };
 
+    // Supply loadout: you could otherwise only discover you launched with no
+    // charges once you were already in flight and needed one.
+    if (typeof Game !== 'undefined' && Game.getConsumables) {
+      const c = Game.getConsumables() || {};
+      const n = (c.boost || 0) + (c.repair || 0) + (c.shield || 0);
+      if (n > 0) {
+        issues.push({ kind: 'info', text: 'Supplies: ' + (c.boost || 0) + ' boost · ' +
+          (c.repair || 0) + ' repair · ' + (c.shield || 0) + ' shield (keys 1/2/3)' });
+      } else {
+        issues.push({ kind: 'info', text: 'No flight supplies — buy them with DATA in the R&D Lab' });
+      }
+    }
+
     // An accepted challenge is otherwise only announced by a toast that fades
     // in a couple of seconds, leaving you to build blind and find out at launch.
     // Surface the objective and a live pass/fail on its build restriction.
