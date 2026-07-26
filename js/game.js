@@ -67,6 +67,11 @@
   }
 
   Game.unlockAchievement = function (id) {
+    // Sandbox is a consequence-free test range: it hands out maxed upgrades and
+    // unlimited consumables, so banking achievement scrap there would let you
+    // claim rewards you never earned. applyResult already skips rewards for
+    // sandbox runs, but combo/mach/ability unlocks fire from flight directly.
+    if (Game.sandbox) return false;
     ensureRecordsState();
     if (Game.state.achievements[id]) return false;
     const a = ACHIEVEMENTS.find(x => x.id === id);

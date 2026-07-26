@@ -930,8 +930,10 @@
       flashMsg('MACH 1');
       if (typeof Game !== 'undefined' && Game.unlockAchievement) Game.unlockAchievement('mach_1');
     }
-    // track highest combo + mach lifetime stats
-    if (typeof Game !== 'undefined' && Game.state && Game.state.stats) {
+    // track highest combo + mach lifetime stats — skipped in sandbox, which
+    // runs with maxed upgrades and free consumables and so must not write
+    // permanent records (applyResult likewise skips all stats for sandbox)
+    if (typeof Game !== 'undefined' && Game.state && Game.state.stats && !Game.sandbox) {
       if (s.combo > (Game.state.stats.highestCombo || 0)) {
         Game.state.stats.highestCombo = s.combo;
       }
