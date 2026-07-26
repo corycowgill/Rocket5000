@@ -317,11 +317,15 @@
     // deterministic per-day
     const rng = mulberry32(seed);
     const pool = [
-      { id: 'junk-only', title: 'JUNK ONLY', description: 'Reach 5,000 ft using only the starting parts.', reward: 80, dataReward: 4, target: 5000, restrict: 'starter' },
-      { id: 'one-engine', title: 'ONE ENGINE', description: 'Reach 8,000 ft with exactly one engine.', reward: 100, dataReward: 5, target: 8000, restrict: 'oneEngine' },
-      { id: 'no-fins', title: 'NO FINS', description: 'Reach 6,000 ft with no fins. Good luck steering.', reward: 90, dataReward: 5, target: 6000, restrict: 'noFins' },
-      { id: 'lightweight', title: 'FEATHERWEIGHT', description: 'Launch a rocket weighing under 200 kg and reach 10,000 ft.', reward: 120, dataReward: 6, target: 10000, restrict: 'maxMass:200' },
-      { id: 'apex', title: 'APEX PREDATOR', description: 'Reach 50,000 ft. No restrictions.', reward: 200, dataReward: 10, target: 50000, restrict: null },
+      { id: 'junk-only', title: 'JUNK ONLY', description: 'Reach 5,000 ft using only the starting parts.', reward: 80, dataReward: 4, target: 5000, restrict: 'starter', goal: { type: 'altitude', ft: 5000 } },
+      { id: 'one-engine', title: 'ONE ENGINE', description: 'Reach 8,000 ft with exactly one engine.', reward: 100, dataReward: 5, target: 8000, restrict: 'oneEngine', goal: { type: 'altitude', ft: 8000 } },
+      { id: 'no-fins', title: 'NO FINS', description: 'Reach 6,000 ft with no fins. Good luck steering.', reward: 90, dataReward: 5, target: 6000, restrict: 'noFins', goal: { type: 'altitude', ft: 6000 } },
+      { id: 'lightweight', title: 'FEATHERWEIGHT', description: 'Launch a rocket weighing under 200 kg and reach 10,000 ft.', reward: 120, dataReward: 6, target: 10000, restrict: 'maxMass:200', goal: { type: 'altitude', ft: 10000 } },
+      { id: 'apex', title: 'APEX PREDATOR', description: 'Reach 50,000 ft. No restrictions.', reward: 200, dataReward: 10, target: 50000, restrict: null, goal: { type: 'altitude', ft: 50000 } },
+      { id: 'moonshot', title: 'LUNAR DELIVERY', description: 'Touch the moon. No restrictions.', reward: 400, dataReward: 20, restrict: null, goal: { type: 'moon' } },
+      { id: 'stacker', title: 'STACK ’EM', description: 'Reach 80,000 ft with a 3+ stage rocket.', reward: 260, dataReward: 12, restrict: 'minStages:3', goal: { type: 'altitude', ft: 80000 } },
+      { id: 'clean-pilot', title: 'CLEAN PILOT', description: 'Pull off 2 clean separations in one flight.', reward: 220, dataReward: 12, restrict: 'minStages:3', goal: { type: 'clean', n: 2 } },
+      { id: 'express', title: 'EXPRESS', description: 'Reach 30,000 ft in under 25 seconds.', reward: 200, dataReward: 10, restrict: null, goal: { type: 'timeUnder', ft: 30000, sec: 25 } },
     ];
     // pick 3 distinct challenges for the day, deterministically (Fisher–Yates
     // driven by the seeded rng so everyone sees the same roster each day)
@@ -352,10 +356,30 @@
     } else if (restrict.indexOf('maxMass:') === 0) {
       const cap = parseFloat(restrict.split(':')[1]);
       if (s.mass >= cap) return { ok: false, reason: 'Must weigh under ' + cap + ' kg' };
+    } else if (restrict.indexOf('minStages:') === 0) {
+      const need = parseInt(restrict.split(':')[1], 10);
+      if ((s.stageCount || 0) < need) return { ok: false, reason: 'Needs ' + need + '+ stages' };
     }
     return { ok: true };
   }
   Game.challengeRestrictionCheck = challengeRestrictionCheck;
+
+  // Did a flight result satisfy a challenge's goal? Older challenges only
+  // carried a `target` altitude; newer ones carry a typed `goal` so we can ask
+  // for moonshots, stage counts, clean separations, or timed climbs.
+  function challengeGoalMet(ch, result) {
+    const g = ch.goal || (ch.target ? { type: 'altitude', ft: ch.target } : null);
+    if (!g) return false;
+    switch (g.type) {
+      case 'altitude':  return result.altitude >= g.ft;
+      case 'moon':      return !!result.success;
+      case 'stages':    return (result.stageCount || 0) >= g.n;
+      case 'clean':     return (result.cleanStages || 0) >= g.n;
+      case 'timeUnder': return result.altitude >= g.ft && result.time <= g.sec;
+      default:          return false;
+    }
+  }
+  Game.challengeGoalMet = challengeGoalMet;
 
   function mulberry32(a) {
     return function () {
@@ -451,7 +475,7 @@
     if (Game.activeChallenge) {
       const ch = Game.activeChallenge;
       const restrictOk = challengeRestrictionCheck(Game.lastRocket, ch.restrict).ok;
-      const challengeMet = restrictOk && result.altitude >= ch.target &&
+      const challengeMet = restrictOk && challengeGoalMet(ch, result) &&
         (state.completedChallenges.indexOf(ch.id + ':' + new Date().toDateString()) === -1);
       if (challengeMet) {
         scrapEarned += ch.reward;
