@@ -642,31 +642,84 @@
     // Altitude estimate — only if it can lift
     let estimate = '';
     if (status !== 'nogo' && s.engineCount && s.fuelCount && s.bodyCount && s.twr >= 1) {
-      // burn rate from engine parts
-      let burnRate = 0;
-      rocket.parts.forEach(pid => {
-        const p = Parts.byId(pid);
-        if (p && p.category === 'engine') burnRate += p.burnRate;
-      });
-      if (burnRate <= 0) burnRate = 1;
-      const fuelMass = s.capacity * 0.05;
-      // average mass during burn = dry + 0.5 * fuel
-      const avgMass = s.mass + 0.5 * fuelMass;
-      const aThrust = (s.thrust * 18) / avgMass; // matches flight THRUST_GAIN
-      const aNet = Math.max(0, aThrust - 9.8);
-      const burnTime = s.capacity / burnRate;
-      const vBurnout = aNet * burnTime;
-      const altBurnout = 0.5 * aNet * burnTime * burnTime;
-      const altCoast = (vBurnout * vBurnout) / (2 * 9.8);
-      const altMeters = altBurnout + altCoast;
-      const altFt = Math.max(0, altMeters * 3.281);
-      estimate = 'EST. APOGEE  <b>~' + formatAltitude(altFt) + '</b>';
+      const altFt = estimateApogeeFt(rocket) ;
+      estimate = 'EST. APOGEE  <b>~' + formatAltitude(altFt) + '</b>'
+               + (s.stageCount >= 2 ? '  <small>(staged)</small>' : '');
     }
 
     const statusLabel = status === 'go'        ? '★ READY FOR LAUNCH'
                       : status === 'marginal'  ? '⚠ MARGINAL — CAN LAUNCH'
                                                : '✕ NO-GO';
     return { status, statusLabel, issues, estimate };
+  }
+
+  // Estimate apogee by integrating the same physics the flight sim uses:
+  // all attached engines fire, fuel drains bottom-tank-first, drag falls off
+  // with altitude, and stages are dropped as soon as they run dry. The old
+  // closed-form guess assumed a single burn and no drag, so it badly
+  // under-reported multi-stage rockets — the exact builds staging rewards.
+  // Vertical, full-throttle, no engine failures: an optimistic-but-honest ceiling.
+  function estimateApogeeFt(rocket) {
+    const GRAVITY = 9.8, THRUST_GAIN = 18, FUEL_MASS_PER_L = 0.05;
+    const upg = (typeof Game !== 'undefined' && Game.getUpgrades) ? Game.getUpgrades() : {};
+    const massMul   = 1 - 0.05 * (upg.lightweight || 0);
+    const thrustMul = 1 + 0.05 * (upg.turbofuel   || 0);
+    const burnMul   = 1 - 0.08 * (upg.efficient   || 0);
+
+    const parts = rocket.parts;
+    const dropped = {};
+    const tank = {};
+    parts.forEach((pid, i) => {
+      const p = Parts.byId(pid);
+      if (p && p.category === 'fuel') tank[i] = p.capacity;
+    });
+    let finMass = 0;
+    if (rocket.finId) {
+      const f = Parts.byId(rocket.finId);
+      if (f) finMass = f.mass;
+    }
+    const attached = () => parts.map((_, i) => i).filter(i => !dropped[i] && Parts.byId(parts[i]));
+    const dryMass = () => (attached().reduce((m, i) => m + Parts.byId(parts[i]).mass, 0) + finMass) * massMul;
+    const totalFuel = () => attached().reduce((sum, i) => sum + (tank[i] || 0), 0);
+
+    let y = 0, vy = 0, maxY = 0;
+    const dt = 0.05;
+    for (let step = 0; step < 24000; step++) {   // 20 min of flight, ample
+      // optimal staging: drop the bottom stage the moment its tanks run dry
+      const stages = Parts.computeStages(parts, dropped);
+      if (stages.length >= 2 && stages.slice(1).some(st => st.engineCount > 0)) {
+        const bottomFuel = stages[0].idxs.reduce((sum, i) => sum + (tank[i] || 0), 0);
+        if (bottomFuel <= 0) stages[0].idxs.forEach(i => { dropped[i] = true; });
+      }
+      let thrust = 0, burn = 0;
+      attached().forEach(i => {
+        const p = Parts.byId(parts[i]);
+        if (p.category === 'engine') { thrust += p.thrust; burn += p.burnRate; }
+      });
+      const fuelNow = totalFuel();
+      const burning = fuelNow > 0 && thrust > 0;
+      if (burning) {                              // drain lowest attached tank first
+        let take = Math.min(burn * burnMul * dt, fuelNow);
+        for (const i of attached()) {
+          if (take <= 0) break;
+          const have = tank[i] || 0;
+          if (have <= 0) continue;
+          const d = Math.min(have, take);
+          tank[i] = have - d;
+          take -= d;
+        }
+      }
+      const mass = Math.max(0.01, dryMass() + totalFuel() * FUEL_MASS_PER_L);
+      const aThrust = burning ? (thrust * thrustMul * THRUST_GAIN) / mass : 0;
+      const airDensity = Math.max(0, 1 - (y / 1000) / 80);
+      const drag = -0.0015 * airDensity * vy * Math.abs(vy);
+      vy += (aThrust - GRAVITY + drag) * dt;
+      y += vy * dt;
+      if (y > maxY) maxY = y;
+      if (vy < 0 && y <= 0) break;                // back on the ground
+      if (!burning && vy < 0 && y < maxY * 0.5) break;   // clearly past apogee
+    }
+    return Math.max(0, maxY * 3.281);
   }
 
   function formatAltitude(ft) {
