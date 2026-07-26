@@ -442,6 +442,10 @@
     if (result.stageCount) {
       scrapEarned += result.stageCount * 25;
     }
+    // clean-separation skill bonus — dropping near-empty stages, timed well
+    if (result.stageBonus) {
+      scrapEarned += result.stageBonus;
+    }
 
     // challenge bonus
     if (Game.activeChallenge) {
@@ -545,6 +549,7 @@
       list.innerHTML += `<li><span>Weather</span><b>${result.modifierLabel} ${mulStr}</b></li>`;
     }
     if (result.stageCount) list.innerHTML += `<li><span>Stages dropped</span><b>${result.stageCount}</b></li>`;
+    if (result.cleanStages) list.innerHTML += `<li class="unlock"><span>Clean separations (${result.cleanStages})</span><b>+${result.stageBonus}</b></li>`;
     if (result.milestoneBonus) list.innerHTML += `<li><span>Milestones</span><b>+${result.milestoneBonus}</b></li>`;
     if (result.comboBonus) list.innerHTML += `<li><span>Pilot bonus</span><b>+${result.comboBonus}</b></li>`;
     if (result.pickupCount) list.innerHTML += `<li><span>Pickups (${result.pickupCount})</span><b>+${result.pickupScrap || 0} sc · +${result.pickupData || 0} dt</b></li>`;

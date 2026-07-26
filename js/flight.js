@@ -482,6 +482,15 @@
       return false;
     }
 
+    // how much of the dropped stage's fuel goes to waste — near-empty = a
+    // "clean separation" the player timed well, and earns a bonus below
+    let dropCap = 0, dropFuel = 0;
+    stages[0].idxs.forEach(idx => {
+      const p = Parts.byId(F.rocket.parts[idx]);
+      if (p && p.category === 'fuel') { dropCap += p.capacity; dropFuel += (s.tankFuel[idx] || 0); }
+    });
+    const wastedFrac = dropCap > 0 ? dropFuel / dropCap : 0;
+
     // drop every still-attached part in the bottom stage (its engine + fuel)
     const droppedNow = stages[0].idxs.slice();
     if (!droppedNow.length) return false;
@@ -519,7 +528,16 @@
     spawnExplosion(s.x + ax * 1, s.y + ay * 1, 0.7);
     s.shake = Math.max(s.shake || 0, 0.4);
     s.stageCount++;
-    flashMsg('STAGE ' + s.stageCount + ' DROP');
+    // clean separation: dropped a near-empty stage → skill bonus (scales with
+    // how many stages deep you are, so tall rockets reward good timing more)
+    if (dropCap > 0 && wastedFrac <= 0.12) {
+      const bonus = 30 * s.stageCount;
+      s.stageBonus = (s.stageBonus || 0) + bonus;
+      s.cleanStages = (s.cleanStages || 0) + 1;
+      flashMsg('CLEAN SEPARATION +' + bonus);
+    } else {
+      flashMsg('STAGE ' + s.stageCount + ' DROP');
+    }
     Sfx.play('explosion');
     return true;
   }
@@ -606,6 +624,8 @@
       milestoneBonus: F.sim.milestoneScrapBonus || 0,
       comboBonus: F.sim.comboBonus || 0,
       stageCount: F.sim.stageCount || 0,
+      stageBonus: F.sim.stageBonus || 0,
+      cleanStages: F.sim.cleanStages || 0,
       pickupScrap: F.sim.pickupScrap || 0,
       pickupData: F.sim.pickupData || 0,
       pickupCount: F.sim.pickupCount || 0,
