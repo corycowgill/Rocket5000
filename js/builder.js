@@ -615,6 +615,23 @@
       return status;
     };
 
+    // An accepted challenge is otherwise only announced by a toast that fades
+    // in a couple of seconds, leaving you to build blind and find out at launch.
+    // Surface the objective and a live pass/fail on its build restriction.
+    if (typeof Game !== 'undefined' && Game.activeChallenge) {
+      const ch = Game.activeChallenge;
+      issues.push({ kind: 'info', text: '◆ ' + ch.title + ' — ' + ch.description });
+      if (ch.restrict && Game.challengeRestrictionCheck) {
+        const rc = Game.challengeRestrictionCheck(rocket, ch.restrict);
+        if (rc.ok) {
+          issues.push({ kind: 'info', text: '✓ build meets challenge rules' });
+        } else {
+          issues.push({ kind: 'crit', text: '✕ ' + rc.reason + ' (challenge)' });
+          status = upgrade(status, 'nogo');
+        }
+      }
+    }
+
     if (s.engineCount === 0) { issues.push({ kind: 'crit', text: 'Add an engine' }); status = upgrade(status, 'nogo'); }
     if (s.fuelCount === 0)   { issues.push({ kind: 'crit', text: 'Add a fuel tank' }); status = upgrade(status, 'nogo'); }
     if (s.bodyCount === 0)   { issues.push({ kind: 'crit', text: 'Add a body / cockpit' }); status = upgrade(status, 'nogo'); }
@@ -764,6 +781,12 @@
     // TWR must exceed 1.0 to beat gravity at all — anything less never leaves
     // the pad, it just burns its fuel standing still
     if (s.twr < 1.0)         return { ok: false, reason: 'Too heavy to lift' };
+    // an accepted challenge gates launch too, so the button says why up front
+    // rather than rejecting the build only after you press it
+    if (typeof Game !== 'undefined' && Game.activeChallenge && Game.challengeRestrictionCheck) {
+      const rc = Game.challengeRestrictionCheck(rocket, Game.activeChallenge.restrict);
+      if (!rc.ok) return { ok: false, reason: rc.reason };
+    }
     return { ok: true };
   }
 
