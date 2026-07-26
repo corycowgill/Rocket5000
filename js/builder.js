@@ -753,50 +753,77 @@
     const thrustMul = 1 + 0.05 * (upg.turbofuel   || 0);
     const burnMul   = 1 - 0.08 * (upg.efficient   || 0);
 
+    // Everything below is precomputed per STAGE so the integration loop is pure
+    // arithmetic. The previous version called Parts.computeStages and rebuilt
+    // an "attached parts" array several times per step across up to 24,000
+    // steps, costing 5-25 ms per estimate — which runs on every part click and
+    // hundreds of times inside QUICK BUILD.
     const parts = rocket.parts;
-    const dropped = {};
-    const tank = {};
-    parts.forEach((pid, i) => {
-      const p = Parts.byId(pid);
-      if (p && p.category === 'fuel') tank[i] = p.capacity;
+    const stages = Parts.computeStages(parts);
+    if (!stages.length) return 0;
+    const sMass = [], sThrust = [], sBurn = [], sTanks = [];
+    stages.forEach(st => {
+      let m = 0, t = 0, b = 0;
+      const tanks = [];
+      st.idxs.forEach(i => {
+        const p = Parts.byId(parts[i]);
+        if (!p) return;
+        m += p.mass;
+        if (p.category === 'engine') { t += p.thrust; b += p.burnRate; }
+        else if (p.category === 'fuel') tanks.push(p.capacity);
+      });
+      sMass.push(m); sThrust.push(t); sBurn.push(b); sTanks.push(tanks);
     });
-    let finMass = 0;
+    let dryRaw = 0;
     if (rocket.finId) {
       const f = Parts.byId(rocket.finId);
-      if (f) finMass = f.mass;
+      if (f) dryRaw = f.mass;
     }
-    const attached = () => parts.map((_, i) => i).filter(i => !dropped[i] && Parts.byId(parts[i]));
-    const dryMass = () => (attached().reduce((m, i) => m + Parts.byId(parts[i]).mass, 0) + finMass) * massMul;
-    const totalFuel = () => attached().reduce((sum, i) => sum + (tank[i] || 0), 0);
+    let thrust = 0, burn = 0, fuelTotal = 0;
+    for (let i = 0; i < stages.length; i++) {
+      dryRaw += sMass[i]; thrust += sThrust[i]; burn += sBurn[i];
+      for (let j = 0; j < sTanks[i].length; j++) fuelTotal += sTanks[i][j];
+    }
+    // running index of the bottom (active) stage; dropping one just advances it
+    let cur = 0;
 
     let y = 0, vy = 0, maxY = 0;
     const dt = 0.05;
     for (let step = 0; step < 24000; step++) {   // 20 min of flight, ample
       // optimal staging: drop the bottom stage the moment its tanks run dry
-      const stages = Parts.computeStages(parts, dropped);
-      if (stages.length >= 2 && stages.slice(1).some(st => st.engineCount > 0)) {
-        const bottomFuel = stages[0].idxs.reduce((sum, i) => sum + (tank[i] || 0), 0);
-        if (bottomFuel <= 0) stages[0].idxs.forEach(i => { dropped[i] = true; });
-      }
-      let thrust = 0, burn = 0;
-      attached().forEach(i => {
-        const p = Parts.byId(parts[i]);
-        if (p.category === 'engine') { thrust += p.thrust; burn += p.burnRate; }
-      });
-      const fuelNow = totalFuel();
-      const burning = fuelNow > 0 && thrust > 0;
-      if (burning) {                              // drain lowest attached tank first
-        let take = Math.min(burn * burnMul * dt, fuelNow);
-        for (const i of attached()) {
-          if (take <= 0) break;
-          const have = tank[i] || 0;
-          if (have <= 0) continue;
-          const d = Math.min(have, take);
-          tank[i] = have - d;
-          take -= d;
+      if (cur < stages.length - 1) {
+        let bottomFuel = 0;
+        for (let j = 0; j < sTanks[cur].length; j++) bottomFuel += sTanks[cur][j];
+        if (bottomFuel <= 0) {
+          let poweredAbove = false;
+          for (let i = cur + 1; i < stages.length; i++) {
+            if (sThrust[i] > 0) { poweredAbove = true; break; }
+          }
+          if (poweredAbove) {
+            dryRaw -= sMass[cur]; thrust -= sThrust[cur]; burn -= sBurn[cur];
+            cur++;
+          }
         }
       }
-      const mass = Math.max(0.01, dryMass() + totalFuel() * FUEL_MASS_PER_L);
+      const burning = fuelTotal > 0 && thrust > 0;
+      if (burning) {                              // drain lowest attached tank first
+        let take = Math.min(burn * burnMul * dt, fuelTotal);
+        for (let i = cur; i < stages.length && take > 0; i++) {
+          const tk = sTanks[i];
+          for (let j = 0; j < tk.length && take > 0; j++) {
+            if (tk[j] <= 0) continue;
+            const d = Math.min(tk[j], take);
+            tk[j] -= d; take -= d; fuelTotal -= d;
+            // Snap to exact zero. These totals are now maintained by repeated
+            // subtraction rather than recomputed each step, so a spent tank
+            // otherwise settles at ~1e-14 — enough to keep `burning` true and
+            // thrust the rocket forever on fuel it does not have.
+            if (tk[j] < 1e-9) { fuelTotal -= tk[j]; tk[j] = 0; }
+          }
+        }
+        if (fuelTotal < 1e-9) fuelTotal = 0;
+      }
+      const mass = Math.max(0.01, dryRaw * massMul + fuelTotal * FUEL_MASS_PER_L);
       const aThrust = burning ? (thrust * thrustMul * THRUST_GAIN) / mass : 0;
       const airDensity = Math.max(0, 1 - (y / 1000) / 80);
       const drag = -0.0015 * airDensity * vy * Math.abs(vy);
