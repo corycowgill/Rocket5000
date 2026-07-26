@@ -179,6 +179,9 @@
       dryMass: stats.mass,
       fuelMass: stats.capacity * FUEL_MASS_PER_L,
       thrust: stats.thrust,
+      // turbofuel R&D multiplier — applied to live flight thrust below, not just
+      // baked into the (display-only) stats.thrust, so the upgrade actually works
+      thrustMul: 1 + 0.05 * (upg.turbofuel || 0),
       burnRate: stats.burnRate * burnFactor,
       breakFactor,
       magnetBoost: 1 + 0.30 * (upg.magnet || 0),
@@ -706,7 +709,7 @@
     const mass = Math.max(0.01, s.dryMass + fuelFraction * s.fuelMass);
 
     // accelerations
-    const aThrustMag = (liveThrust * THRUST_GAIN / mass) * s.throttle * (s.fuel > 0 ? 1 : 0);
+    const aThrustMag = (liveThrust * (s.thrustMul || 1) * THRUST_GAIN / mass) * s.throttle * (s.fuel > 0 ? 1 : 0);
     const ax = aThrustMag * Math.sin(s.angle);
     const ayThrust = aThrustMag * Math.cos(s.angle);
 
@@ -1534,14 +1537,34 @@
     ctx.fillStyle = 'rgba(200,215,245,0.8)';
     ctx.textAlign = 'left';
     ctx.fillText('STAGES', x, top - 11);
+    // remaining-fuel fraction for a stage (sum of its tanks / their capacity)
+    const stageFuelFrac = (stage) => {
+      let have = 0, cap = 0;
+      for (const idx of stage.idxs) {
+        const p = Parts.byId(F.rocket.parts[idx]);
+        if (p && p.category === 'fuel') { cap += p.capacity; have += (sim.tankFuel[idx] || 0); }
+      }
+      return cap > 0 ? have / cap : 0;
+    };
     // stages[] is bottom→top; draw highest at the top of the ladder so STAGE 1
     // (the next to drop) sits at the bottom, matching the rocket above the pad
     for (let i = n - 1; i >= 0; i--) {
-      const isNext = (i === 0);             // bottom stage drops next
+      const isNext = (i === 0);             // bottom stage drops next (active)
       const y = top + (n - 1 - i) * (segH + gap);
       const cy = y + segH / 2;
-      ctx.fillStyle = isNext ? 'rgba(255,90,70,0.85)' : 'rgba(120,150,210,0.5)';
+      const frac = stageFuelFrac(stages[i]);
+      // empty tank body
+      ctx.fillStyle = 'rgba(28,36,54,0.8)';
       ctx.fillRect(x, y, segW, segH);
+      // fuel fill (left→right) — the active stage burns green→empty so you can
+      // watch it drain and know exactly when dropping it is free
+      if (frac > 0) {
+        ctx.fillStyle = isNext ? 'rgba(120,225,140,0.92)' : 'rgba(110,140,200,0.75)';
+        ctx.fillRect(x, y, Math.max(1, segW * frac), segH);
+      } else if (isNext) {
+        ctx.fillStyle = 'rgba(255,90,70,0.6)';   // active + empty = drop it now
+        ctx.fillRect(x, y, segW, segH);
+      }
       ctx.strokeStyle = isNext ? '#ffd0a0' : 'rgba(180,200,240,0.7)';
       ctx.lineWidth = 1;
       ctx.strokeRect(x + 0.5, y + 0.5, segW - 1, segH - 1);
@@ -1549,9 +1572,9 @@
       ctx.textAlign = 'center';
       ctx.fillText('S' + (i + 1), x + segW / 2, cy);
       if (isNext) {
-        ctx.fillStyle = '#ffd0a0';
+        ctx.fillStyle = frac > 0 ? 'rgba(255,255,255,0.75)' : '#ffd0a0';
         ctx.textAlign = 'left';
-        ctx.fillText('▼ DROP (S)', x + segW + 6, cy);
+        ctx.fillText(frac > 0 ? 'ACTIVE' : '▼ DROP (S)', x + segW + 6, cy);
       }
     }
     ctx.restore();
