@@ -344,24 +344,37 @@
 
   // ---- layout / hit testing -------------------------------------------------
   function getStackLayout() {
-    // Returns { cx, groundY, items: [{partId, top, bottom, height}] }
+    // Returns { cx, groundY, scale, items: [{partId, top, bottom, height}] }
+    // The scale shrinks below STACK_SCALE once a tall rocket would grow past the
+    // top of the canvas. Without this, extra parts render off-screen where they
+    // can't be seen OR clicked to remove — the stack has no part-count cap.
     const cx = State.canvas.width / 2;
     const groundY = State.canvas.height - 60;
+    const HEADROOM = 34;              // leave room for the nose cone + ghost
+    let spriteH = 0;
+    State.rocket.parts.forEach(pid => {
+      const part = Parts.byId(pid);
+      if (part) spriteH += part.height;
+    });
+    const avail = groundY - HEADROOM;
+    const scale = (spriteH * STACK_SCALE > avail && spriteH > 0)
+      ? Math.max(0.35, avail / spriteH)
+      : STACK_SCALE;
     const items = [];
     let cursorY = groundY;
     State.rocket.parts.forEach(pid => {
       const part = Parts.byId(pid);
       if (!part) return;
-      const h = part.height * STACK_SCALE;
+      const h = part.height * scale;
       items.push({ partId: pid, top: cursorY - h, bottom: cursorY, height: h });
       cursorY -= h;
     });
-    return { cx, groundY, items, topY: cursorY };
+    return { cx, groundY, scale, items, topY: cursorY };
   }
 
   function hitTestStack(x, y) {
     const layout = getStackLayout();
-    const halfW = 18 * STACK_SCALE;
+    const halfW = 18 * layout.scale;
     if (x < layout.cx - halfW || x > layout.cx + halfW) return -1;
     for (let i = 0; i < layout.items.length; i++) {
       const it = layout.items[i];
@@ -374,10 +387,11 @@
     const layout = getStackLayout();
     if (layout.items.length === 0) return false;
     const bottom = layout.items[0];
-    const halfW = 36 * STACK_SCALE;
+    const sc = layout.scale;
+    const halfW = 36 * sc;
     return (y >= bottom.top && y <= bottom.bottom &&
-            (x < layout.cx - 18 * STACK_SCALE && x > layout.cx - halfW ||
-             x > layout.cx + 18 * STACK_SCALE && x < layout.cx + halfW));
+            (x < layout.cx - 18 * sc && x > layout.cx - halfW ||
+             x > layout.cx + 18 * sc && x < layout.cx + halfW));
   }
 
   // ---- drawing --------------------------------------------------------------
@@ -425,7 +439,7 @@
     if (stages.length >= 2 && layout.items.length) {
       const bandFill = ['rgba(90,150,255,0.07)', 'rgba(255,140,70,0.07)'];
       const bandEdge = ['rgba(120,180,255,0.55)', 'rgba(255,170,90,0.55)'];
-      const halfBand = 22 * STACK_SCALE;
+      const halfBand = 22 * layout.scale;
       let stageNo = 0;
       stages.forEach((st, si) => {
         const bandBottom = layout.items[st.idxs[0]].bottom;                  // lowest part
@@ -463,7 +477,7 @@
     layout.items.forEach((item, i) => {
       const part = Parts.byId(item.partId);
       const isThrusting = (part.category === 'engine'); // mock animation in builder
-      part.sprite(ctx, layout.cx, item.bottom, STACK_SCALE, { thrusting: false, t: 0 });
+      part.sprite(ctx, layout.cx, item.bottom, layout.scale, { thrusting: false, t: 0 });
 
       if (i === State.hoverIndex) {
         ctx.fillStyle = '#ff5577';
@@ -480,7 +494,7 @@
       const finPart = Parts.byId(State.rocket.finId);
       const lowestBody = layout.items.find(it => Parts.byId(it.partId).category === 'body') || layout.items[0];
       if (lowestBody) {
-        finPart.sprite(ctx, layout.cx, lowestBody.bottom + 6, STACK_SCALE, null);
+        finPart.sprite(ctx, layout.cx, lowestBody.bottom + 6, layout.scale, null);
       }
     }
 
@@ -501,7 +515,7 @@
       if (part && part.category !== 'fin') {
         ctx.globalAlpha = 0.4;
         const ghostBottom = layout.topY;
-        part.sprite(ctx, cx, ghostBottom, STACK_SCALE, null);
+        part.sprite(ctx, cx, ghostBottom, layout.scale, null);
         ctx.globalAlpha = 1;
       }
     }
