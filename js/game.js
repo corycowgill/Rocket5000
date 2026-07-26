@@ -102,6 +102,8 @@
       ['STAGES', fmt(st.totalStages)],
       ['SCRAP EARNED', fmt(st.totalScrapEarned)],
       ['BEST COMBO', '×' + (st.highestCombo || 0)],
+      // highestMach was recorded every flight but never surfaced anywhere
+      ['BEST MACH', 'M' + (st.highestMach || 0).toFixed(2)],
     ];
     items.forEach(([k, v]) => {
       const li = document.createElement('li');
