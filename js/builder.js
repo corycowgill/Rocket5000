@@ -36,6 +36,47 @@
     return { name: randomName(), parts: [], finId: null };
   }
 
+  // Assemble the best rocket the player's UNLOCKED parts allow, by scoring
+  // candidate stage layouts with the same apogee integration the readiness
+  // panel uses. Doubles as onboarding: it produces a correct engine->fuel->
+  // engine->fuel stack, so a new player can see what a staged rocket looks like.
+  function quickBuild(Game) {
+    const owned = (id) => Game.sandbox || Game.state.unlocked.indexOf(id) !== -1;
+    const avail = (cat) => Parts.byCategory(cat).filter(p => owned(p.id));
+    const engines = avail('engine');
+    const fuels = avail('fuel');
+    const bodies = avail('body');
+    const fins = avail('fin');
+    if (!engines.length || !fuels.length || !bodies.length) return null;
+
+    // lightest body keeps the payload cheap; best fin is pure stability per kg
+    const body = bodies.slice().sort((a, b) => a.mass - b.mass)[0];
+    const fin = fins.length
+      ? fins.slice().sort((a, b) => (b.stability / b.mass) - (a.stability / a.mass))[0]
+      : null;
+
+    let best = null;
+    engines.forEach(eng => {
+      fuels.forEach(fu => {
+        for (let stages = 1; stages <= 4; stages++) {
+          for (let tanks = 1; tanks <= 3; tanks++) {
+            const parts = [];
+            for (let s = 0; s < stages; s++) {
+              parts.push(eng.id);
+              for (let t = 0; t < tanks; t++) parts.push(fu.id);
+            }
+            parts.push(body.id);
+            const cand = { name: randomName(), parts, finId: fin ? fin.id : null };
+            if (!validate(cand).ok) continue;          // must actually be able to lift
+            const score = estimateApogeeFt(cand);
+            if (!best || score > best.score) best = { rocket: cand, score };
+          }
+        }
+      });
+    });
+    return best ? best.rocket : null;
+  }
+
   const NAME_PARTS_A = ['Wobbly', 'Janky', 'Mighty', 'Doomed', 'Glorious', 'Spicy', 'Crusty', 'Yeet', 'Honest', 'Cursed'];
   const NAME_PARTS_B = ['Pigeon', 'Bottle', 'Boomer', 'Toaster', 'Pretzel', 'Spaghetti', 'Comet', 'Goblin', 'Donut', 'Trashcan'];
   function randomName() {
@@ -240,6 +281,22 @@
         const idx = parseInt(tab.dataset.slot, 10);
         switchSlot(Game, idx);
       });
+    });
+
+    $('#btn-quick').addEventListener('click', () => {
+      const built = quickBuild(Game);
+      if (!built) {
+        Game.showToast('Need an engine, a tank and a body unlocked');
+        return;
+      }
+      built.name = State.rocket.name;      // keep whatever the slot is called
+      State.rocket = built;
+      saveBuild(Game);
+      redraw();
+      updateStats();
+      Sfx.play('snap');
+      const st = getStats(built);
+      Game.showToast('QUICK BUILD · ' + st.stageCount + (st.stageCount === 1 ? ' stage' : ' stages'));
     });
 
     $('#btn-clear').addEventListener('click', () => {
