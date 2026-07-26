@@ -417,7 +417,9 @@
       return false;
     }
     if (!Game.spendConsumable(id)) {
-      flashMsg('NO ' + id.toUpperCase() + ' STOCK');
+      // say where charges actually come from — the ability buttons otherwise
+      // just read 0 with no hint that they're bought with DATA in the R&D LAB
+      flashMsg('NO ' + id.toUpperCase() + ' — BUY WITH DATA IN R&D LAB');
       return false;
     }
     if (Game.unlockAchievement) Game.unlockAchievement('ability_use');

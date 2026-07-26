@@ -242,8 +242,10 @@
         </div>
       `;
       const buyBtn = document.createElement('button');
-      buyBtn.textContent = 'BUY · ' + sup.cost + ' DT';
-      buyBtn.disabled = Game.state.data < sup.cost;
+      const short = sup.cost - Game.state.data;
+      // say how much more data is needed rather than just greying out
+      buyBtn.textContent = short > 0 ? 'NEED ' + short + ' MORE DT' : 'BUY · ' + sup.cost + ' DT';
+      buyBtn.disabled = short > 0;
       buyBtn.addEventListener('click', () => {
         if (Game.state.data < sup.cost) return;
         Game.state.data -= sup.cost;
@@ -478,7 +480,13 @@
 
     // scrap based on altitude
     let scrapEarned = Math.floor(result.altitude / 100);
-    let dataEarned = Math.floor(result.altitude / 5000);
+    // Data's only sink is flight supplies, and every charge is single-use. The
+    // old altitude/5000 rate paid NOTHING below 5,000 ft and left a shield
+    // costing ~6 flights of income, so most players never got to use the system
+    // at all. Halving the divisor and guaranteeing 1 data for any real launch
+    // makes supplies reachable early without touching the scrap economy.
+    let dataEarned = Math.floor(result.altitude / 2500);
+    if (result.altitude >= 500) dataEarned = Math.max(1, dataEarned);
     if (result.success) { scrapEarned += 500; dataEarned += 25; }
 
     // milestone + combo bonuses (earned during flight)
