@@ -899,6 +899,36 @@ canvas {
   opacity: 0.35;
   pointer-events: none;
 }
+/* RECOVER — ends the flight once the tanks are dry */
+.touch-recover {
+  align-self: flex-end;
+  width: 150px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  background: var(--console-mid);
+  box-shadow: inset 0 0 0 2px var(--console-rim), 3px 3px 0 var(--shadow);
+}
+.touch-recover.ready {
+  background: var(--nasa-blue);
+  color: #fff;
+  animation: recover-pulse 1.6s ease-in-out infinite;
+}
+@keyframes recover-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 2px var(--console-rim), 3px 3px 0 var(--shadow); }
+  50%      { box-shadow: inset 0 0 0 2px var(--console-rim), 3px 3px 0 var(--shadow), 0 0 10px var(--nasa-blue-pale); }
+}
+.touch-recover:active { background: var(--nasa-blue-pale); }
+.touch-recover.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .touch-recover.ready { animation: none; }
+}
 .hud-strip {
   display: flex;
   justify-content: space-between;

@@ -383,6 +383,10 @@
       if (!e.repeat && (e.code === 'Digit1' || e.code === 'Numpad1')) { useAbility('boost');  e.preventDefault(); }
       if (!e.repeat && (e.code === 'Digit2' || e.code === 'Numpad2')) { useAbility('repair'); e.preventDefault(); }
       if (!e.repeat && (e.code === 'Digit3' || e.code === 'Numpad3')) { useAbility('shield'); e.preventDefault(); }
+      if (!e.repeat && (e.code === 'Escape' || e.code === 'Enter')) {
+        if (!endFlight() && !F.sim.crashed) flashMsg('BURN OUT YOUR FUEL FIRST');
+        e.preventDefault();
+      }
     });
     document.addEventListener('keyup', (e) => {
       if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') F.keys.thrust = false;
@@ -409,6 +413,13 @@
     const stageHandler = (e) => { jettisonStage(); e.preventDefault(); };
     stageBtn.addEventListener('click', stageHandler);
     stageBtn.addEventListener('touchstart', stageHandler, { passive: false });
+
+    const recBtn = $('#touch-recover');
+    if (recBtn) {
+      const recHandler = (e) => { endFlight(); e.preventDefault(); };
+      recBtn.addEventListener('click', recHandler);
+      recBtn.addEventListener('touchstart', recHandler, { passive: false });
+    }
 
     // ability buttons (boost / repair / shield)
     bindAbility('#ability-boost',  'boost');
@@ -605,6 +616,24 @@
         });
       }
     });
+  }
+
+  // Once the tanks are dry the apogee — which drives every reward — is already
+  // locked in, and the fall can take minutes with no throttle input possible.
+  // Let the player collect their results instead of watching it. Descending
+  // still earns combo and pickups, so this is opt-in rather than automatic.
+  function canRecover() {
+    const s = F.sim;
+    return !!s && !s.crashed && !s.moonReached && !s.exiting && s.fuel <= 0 && s.time > 2;
+  }
+
+  function endFlight() {
+    if (!canRecover()) return false;
+    const s = F.sim;
+    s.crashed = true;
+    s.crashReason = s.maxAltitudeM > 3 ? 'RECOVERED' : 'SCRUBBED';
+    flashMsg('FLIGHT ENDED');
+    return true;
   }
 
   function canStage() {
@@ -3387,6 +3416,14 @@
       const stages = currentStages(s);
       const droppable = stages.length - 1;
       stageBtn.textContent = 'STAGE' + (droppable > 1 ? ' (' + droppable + ')' : '');
+    }
+
+    // recover button — only live once the tanks are dry
+    const recBtn = $('#touch-recover');
+    if (recBtn) {
+      const can = canRecover();
+      recBtn.classList.toggle('disabled', !can);
+      recBtn.classList.toggle('ready', can && s.vy < 0);
     }
 
     // ability buttons reflect remaining stock + shield active state
