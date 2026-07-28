@@ -899,5 +899,8 @@
 
   global.Builder = {
     enter, getCurrentRocket, validate, getStats,
+    // exposed for tests: the apogee integration and the auto-assembler are pure
+    // functions of (rocket, unlocked parts), and both are easy to break silently
+    estimateApogeeFt, quickBuild, getStackLayout,
   };
 })(window);
