@@ -611,6 +611,13 @@
     $('#result-alt').textContent = formatFt(result.altitude).replace(/ ft$/, '').toUpperCase();
     $('#result-flair').textContent = pickFlair(result);
 
+    const noteEl = $('#result-analysis');
+    if (noteEl) {
+      const note = flightAnalysis(result);
+      noteEl.textContent = note || '';
+      noteEl.style.display = note ? '' : 'none';
+    }
+
     const list = $('#result-rewards');
     list.innerHTML = '';
     if (result.modifierLabel && result.modifierId !== 'calm') {
@@ -631,6 +638,40 @@
       list.innerHTML += `<li class="unlock"><span>Unlocked</span><b>${part ? part.name : pid}</b></li>`;
     });
     if (!list.innerHTML) list.innerHTML = '<li><span>Nothing salvaged</span><b>—</b></li>';
+  }
+
+  // One actionable takeaway per flight. Without this the result screen tells you
+  // how high you got but never why you stopped there, so there is nothing to act
+  // on between attempts. Ordered most-diagnostic first.
+  function flightAnalysis(result) {
+    const fuel = Math.round((result.fuelLeftPct || 0) * 100);
+    if (result.success) return null;                      // a moonshot needs no notes
+
+    if (result.tumbleDeath) {
+      return 'Tumbling tore the vehicle apart. Follow the STEER prompt the moment the attitude bar turns red.';
+    }
+    if (result.crashReason === 'NEVER LEFT THE PAD') {
+      return 'It never lifted. Raise thrust or cut mass until TWR clears 1.0 in the hangar.';
+    }
+    if (result.hullLeftPct <= 0 && fuel >= 25) {
+      return 'Lost the vehicle with ' + fuel + '% of your fuel unburned — survive longer and that fuel becomes altitude. Add hull, or spend a SHIELD.';
+    }
+    // destruction outranks any fuel advice: reporting a "clean burn" to someone
+    // whose rocket was torn apart would be plainly wrong
+    if (result.hullLeftPct <= 0) {
+      return 'Vehicle destroyed. Tougher bodies, the Reinforced Hull upgrade, or a SHIELD charge buy you more flight.';
+    }
+    if (result.stagesLeft >= 1 && fuel <= 5) {
+      return 'You burned out still carrying ' + result.stagesLeft +
+             ' spent stage' + (result.stagesLeft > 1 ? 's' : '') + '. Drop them with S — dead weight costs you altitude.';
+    }
+    if (fuel <= 5 && result.stageCount === 0) {
+      return 'Burned every drop in one stage. Stack engine → fuel → engine → fuel and stage on burnout to go markedly higher.';
+    }
+    if (fuel <= 5) {
+      return 'Clean burn, out of fuel. More tanks or another stage is the next step up.';
+    }
+    return null;
   }
 
   function pickStampText(result) {

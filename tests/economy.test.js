@@ -192,3 +192,51 @@ test('moonshot marks success and records the stat', () => {
   assert.ok(g.Game.state.achievements.moonshot);
   assert.ok(g.Game.state.scrap > 10000, 'moonshot should pay the 500 bonus on top of altitude');
 });
+
+// ---- post-flight analysis ---------------------------------------------------
+// The result screen's one actionable takeaway. Ordering matters: destruction
+// must outrank fuel advice, or a torn-apart rocket gets told it had a clean burn.
+function analysisFor(g, over) {
+  const src = fs.readFileSync(path.join(ROOT, 'js/game.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function flightAnalysis'), src.indexOf('\n  function pickStampText'));
+  const flightAnalysis = eval('(' + fn + ')');
+  return flightAnalysis(Object.assign({
+    success: false, crashReason: null, fuelLeftPct: 0, hullLeftPct: 1,
+    stagesLeft: 0, stageCount: 0, tumbleDeath: false,
+  }, over));
+}
+
+test('analysis: a moonshot needs no advice', () => {
+  assert.equal(analysisFor(null, { success: true }), null);
+});
+
+test('analysis: tumbling is called out first', () => {
+  const a = analysisFor(null, { tumbleDeath: true, hullLeftPct: 0, fuelLeftPct: 0.5 });
+  assert.match(a, /Tumbling/);
+});
+
+test('analysis: destroyed with fuel left reports the wasted fuel', () => {
+  const a = analysisFor(null, { hullLeftPct: 0, fuelLeftPct: 0.62 });
+  assert.match(a, /62% of your fuel unburned/);
+});
+
+test('analysis: destroyed with no fuel must NOT claim a clean burn', () => {
+  const a = analysisFor(null, { hullLeftPct: 0, fuelLeftPct: 0, stageCount: 3 });
+  assert.match(a, /destroyed/i);
+  assert.ok(!/clean burn/i.test(a), 'destruction must outrank fuel advice');
+});
+
+test('analysis: undropped spent stages are flagged', () => {
+  const a = analysisFor(null, { fuelLeftPct: 0, stagesLeft: 2 });
+  assert.match(a, /2 spent stages/);
+});
+
+test('analysis: a single-stage burnout is pointed at staging', () => {
+  const a = analysisFor(null, { fuelLeftPct: 0, stageCount: 0 });
+  assert.match(a, /engine/);
+});
+
+test('analysis: a rocket that never lifted is pointed at TWR', () => {
+  const a = analysisFor(null, { crashReason: 'NEVER LEFT THE PAD' });
+  assert.match(a, /TWR/);
+});

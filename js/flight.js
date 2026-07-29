@@ -688,6 +688,11 @@
       modifierId: F.sim.modifier ? F.sim.modifier.id : 'calm',
       modifierLabel: F.sim.modifier ? F.sim.modifier.label : 'CALM',
       modifierScrapMul: F.sim.modifier ? F.sim.modifier.scrapMul : 1.0,
+      // telemetry for the post-flight analysis line
+      fuelLeftPct: F.sim.maxFuel > 0 ? F.sim.fuel / F.sim.maxFuel : 0,
+      hullLeftPct: F.sim.maxHull > 0 ? Math.max(0, F.sim.hull) / F.sim.maxHull : 0,
+      stagesLeft: Math.max(0, currentStages(F.sim).length - 1),
+      tumbleDeath: !!F.sim.tumbling,
     };
   }
 

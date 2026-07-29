@@ -899,6 +899,29 @@ canvas {
   opacity: 0.35;
   pointer-events: none;
 }
+/* Post-flight analysis — the one actionable takeaway from the run */
+.result-analysis {
+  margin-top: 10px;
+  padding: 9px 12px;
+  background: var(--dsky-bg);
+  border: 2px solid var(--dsky-rim);
+  border-left: 4px solid var(--dsky-amber);
+  color: var(--dsky-green);
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 5px rgba(45, 255, 133, 0.4);
+}
+.result-analysis::before {
+  content: 'FLIGHT ANALYSIS';
+  display: block;
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.22em;
+  color: var(--dsky-amber);
+  margin-bottom: 4px;
+}
+
 /* RECOVER — ends the flight once the tanks are dry */
 .touch-recover {
   align-self: flex-end;
