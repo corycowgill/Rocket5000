@@ -1669,6 +1669,9 @@
     // stage ladder — fixed, unrotated readout of remaining stages + next drop
     drawStageIndicator(ctx, W, H, s);
 
+    // attitude recovery prompt — tumbling is what actually ends most flights
+    drawAttitudeWarning(ctx, W, H, s);
+
     // subtle CRT scanline overlay — sells the "mission control monitor" feel
     drawScanlines(ctx, W, H);
 
@@ -1680,6 +1683,51 @@
       ctx.fillRect(0, 0, W, H);
       ctx.globalAlpha = 1;
     }
+  }
+
+  // Tumbling drains 30 hull/s and ends most flights, yet recovery only takes
+  // about a second of correct counter-steering — players just were not told
+  // which way to steer, and the "TUMBLING!" toast fired once and vanished.
+  // This shows a live attitude bar and the exact key to press.
+  function drawAttitudeWarning(ctx, W, H, sim) {
+    if (sim.exiting || sim.crashed) return;
+    const w = Math.atan2(Math.sin(sim.angle), Math.cos(sim.angle));
+    const off = Math.abs(w);
+    if (off < 1.2) return;                       // upright enough — stay quiet
+    const critical = off > 2.5;                  // this is the band that hurts
+
+    // steer command: same PD rule that recovers in ~1s in testing.
+    // left decreases angVel, right increases it.
+    const ctl = -(w * 1.5) - (sim.angVel || 0) * 1.2;
+    const goRight = ctl > 0;
+
+    const cx = W / 2, y = H * 0.30;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // tilt bar: how far from upright, 0 (centre) to pi (ends)
+    const barW = Math.min(260, W * 0.5), barH = 8;
+    ctx.fillStyle = 'rgba(10,14,26,0.75)';
+    ctx.fillRect(cx - barW / 2, y + 14, barW, barH);
+    const frac = Math.min(1, off / Math.PI);
+    ctx.fillStyle = critical ? 'rgba(255,70,70,0.95)' : 'rgba(255,180,60,0.9)';
+    const mark = cx + (w < 0 ? -1 : 1) * (barW / 2) * frac;
+    ctx.fillRect(Math.min(mark, cx), y + 14, Math.abs(mark - cx), barH);
+    ctx.strokeStyle = 'rgba(220,230,250,0.7)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - barW / 2 + 0.5, y + 14.5, barW - 1, barH - 1);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cx - 1, y + 12, 2, barH + 4);   // upright marker
+
+    ctx.font = 'bold 15px ui-monospace, monospace';
+    ctx.fillStyle = critical ? '#ff6a6a' : '#ffc061';
+    ctx.fillText(critical ? '⚠ TUMBLING — HULL BURNING' : 'ATTITUDE HIGH', cx, y - 6);
+
+    ctx.font = 'bold 20px ui-monospace, monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(goRight ? 'STEER  →  (D)' : 'STEER  ←  (A)', cx, y + 42);
+    ctx.restore();
   }
 
   function drawStageIndicator(ctx, W, H, sim) {
