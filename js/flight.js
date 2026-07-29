@@ -1443,12 +1443,22 @@
 
     if (altFt < 2000) return 'bird';
     if (altFt < 30000) {
-      // lightning vs nothing
-      const lProb = 0.4 * lightningMul;
-      return Math.random() < lProb ? 'lightning' : 'bird';
+      // Lightning frequency was tuned back when bolts never actually armed, so
+      // 40% of spawns here was harmless. Now that they connect, that rate meant
+      // a 25-damage strike roughly every 5s even in CALM — measured 5 strikes
+      // (125 damage vs ~110 hull) on an otherwise clean flight. Dropped to a
+      // rare event; the weather multipliers still make storms genuinely deadly.
+      // Birds are the fallback here, so simply cutting the lightning share would
+      // have converted those spawns into birds (60% -> 88% of attempts) and
+      // swapped one damage tax for another. Let some attempts yield nothing.
+      const lProb = 0.12 * lightningMul;
+      const r = Math.random();
+      if (r < lProb) return 'lightning';
+      if (r < lProb + 0.55) return 'bird';
+      return null;
     }
     if (altFt < 80000) {
-      const lProb = 0.3 * lightningMul;
+      const lProb = 0.1 * lightningMul;
       const dProb = 0.4 * debrisMul;
       const r = Math.random();
       if (r < lProb) return 'lightning';
@@ -1491,8 +1501,10 @@
         t: 0,
         dead: false,
         armed: false,
-        telegraph: 0.5,
-        dieAt: 1.1,
+        // longer fuse so the strike is actually dodgeable: 0.5s was not enough
+        // time to translate away from the bolt at flight speeds
+        telegraph: 0.9,
+        dieAt: 1.5,
       };
     }
     if (type === 'debris') {
