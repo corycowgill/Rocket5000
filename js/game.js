@@ -54,6 +54,9 @@
     { id: 'storm_survive',  name: 'Storm Chaser',           icon: '⚐',   reward: 200, desc: 'Reach 10,000 ft during THUNDERSTORM.' },
     { id: 'aurora_run',     name: 'Aurora Borealis',        icon: '〰',   reward: 200, desc: 'Reach 100,000 ft during AURORA.' },
     { id: 'scrap_10k',      name: 'Junk Tycoon',            icon: '$',   reward: 500, desc: 'Earn 10,000 lifetime scrap.' },
+    // post-moon endgame — something to chase once the moon is landed
+    { id: 'deep_space',     name: 'Deep Space',             icon: '✧',   reward: 3000, desc: 'Reach 5,000,000 ft.' },
+    { id: 'interplanetary', name: 'Interplanetary',         icon: '✺',   reward: 10000, desc: 'Reach 10,000,000 ft.' },
   ];
   Game.ACHIEVEMENTS = ACHIEVEMENTS;
 
@@ -285,21 +288,40 @@
   // The moon is the actual win condition but the game never showed how far off
   // you are, or that reaching it needs a multi-stage rocket. Starter parts top
   // out near 9% of the way, so the note doubles as the next concrete goal.
+  // Objectives in order. Once the moon is landed the meter retargets rather than
+  // sitting at 100% forever — there was previously nothing left to chase.
+  const OBJECTIVES = [
+    { ft: MOON_FT,   label: 'THE MOON',       note: 'THE MOON NEEDS 3+ STAGES · 1,000,000 FT' },
+    { ft: 5000000,   label: 'DEEP SPACE',     note: 'DEEP SPACE · 5,000,000 FT' },
+    { ft: 10000000,  label: 'INTERPLANETARY', note: 'INTERPLANETARY · 10,000,000 FT' },
+  ];
+
   function refreshMoonProgress() {
     const fillEl = $('#moon-fill');
     if (!fillEl) return;
     const best = Game.state.bestAltitude || 0;
-    const done = (Game.state.stats && Game.state.stats.totalMoonshots > 0) ||
-                 Game.state.successfulMoonshots > 0;
-    const pct = Math.max(0, Math.min(100, (best / MOON_FT) * 100));
+    const moonDone = (Game.state.stats && Game.state.stats.totalMoonshots > 0) ||
+                     Game.state.successfulMoonshots > 0;
+
+    // aim at the first objective not yet beaten; if all are done, stay on the last
+    let obj = OBJECTIVES.find(o => best < o.ft);
+    const allDone = !obj;
+    if (allDone) obj = OBJECTIVES[OBJECTIVES.length - 1];
+
+    const pct = Math.max(0, Math.min(100, (best / obj.ft) * 100));
     // a sqrt curve keeps early progress visible — linear leaves the bar looking
     // empty for the whole first half of the game
-    fillEl.style.width = (done ? 100 : Math.sqrt(pct / 100) * 100).toFixed(1) + '%';
-    fillEl.classList.toggle('complete', done);
-    $('#moon-pct').textContent = done ? 'LANDED' : (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
-    $('#moon-note').textContent = done
-      ? 'MOONSHOT CONFIRMED · ' + formatFt(best).toUpperCase()
-      : nextGoalHint(best);
+    fillEl.style.width = (allDone ? 100 : Math.sqrt(pct / 100) * 100).toFixed(1) + '%';
+    fillEl.classList.toggle('complete', allDone || (moonDone && obj.ft === MOON_FT));
+
+    const head = $('#moon-objective');
+    if (head) head.textContent = 'MISSION OBJECTIVE · ' + obj.label;
+    $('#moon-pct').textContent = allDone ? 'COMPLETE'
+      : (pct < 10 ? pct.toFixed(1) : Math.floor(pct)) + '%';
+    $('#moon-note').textContent = allDone
+      ? 'ALL OBJECTIVES MET · ' + formatFt(best).toUpperCase()
+      : (obj.ft === MOON_FT ? nextGoalHint(best)
+                            : obj.note + ' · BEST ' + formatFt(best).toUpperCase());
   }
 
   function nextGoalHint(best) {
@@ -555,6 +577,8 @@
     if (state.stats.totalCrashes >= 100) Game.unlockAchievement('crash_100');
     if (state.stats.totalPickups >= 100) Game.unlockAchievement('pickup_100');
     if (state.stats.totalScrapEarned >= 10000) Game.unlockAchievement('scrap_10k');
+    if (result.altitude >= 5000000)  Game.unlockAchievement('deep_space');
+    if (result.altitude >= 10000000) Game.unlockAchievement('interplanetary');
     if (result.modifierId === 'storm'  && result.altitude >= 10000)  Game.unlockAchievement('storm_survive');
     if (result.modifierId === 'aurora' && result.altitude >= 100000) Game.unlockAchievement('aurora_run');
 

@@ -152,6 +152,11 @@
     { ft: 250000,  label: 'EXOSPHERE',          bonus: 800 },
     { ft: 500000,  label: 'HALFWAY TO THE MOON',bonus: 1500 },
     { ft: 1000000, label: 'MOON',               bonus: 5000 },
+    // Past the moon there was nothing left to chase. A maxed 8-stage build
+    // estimates out past 40M ft, so these are demanding but genuinely reachable.
+    { ft: 2500000,  label: 'LUNAR TRANSFER',    bonus: 8000 },
+    { ft: 5000000,  label: 'DEEP SPACE',        bonus: 15000 },
+    { ft: 10000000, label: 'INTERPLANETARY',    bonus: 40000 },
   ];
 
   // ---- simulation init ------------------------------------------------------
