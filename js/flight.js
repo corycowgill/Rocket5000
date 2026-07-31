@@ -203,6 +203,10 @@
       crashed: false,
       moonReached: false,
       crashReason: null,
+      // the first moonshot terminates the run; later flights press on past it
+      moonEndsFlight: !(typeof Game !== 'undefined' && Game.state && Game.state.stats &&
+                        (Game.state.stats.totalMoonshots || 0) > 0),
+      passedMoon: false,
       throttle: 0,
       modifier,
       // milestones
@@ -999,11 +1003,15 @@
       Sfx.play('explosion');
     }
 
-    // moon check
-    if (s.y >= MOON_ALTITUDE_M && !s.moonReached) {
-      s.moonReached = true;
-      flashMsg('MOON REACHED!');
+    // Moon check. The first moonshot ends the flight — that is the win, and it
+    // should land as a moment. Afterwards the moon becomes a waypoint you fly
+    // straight past, otherwise the deep-space objectives beyond it could never
+    // be reached: the run would always stop dead at 1,000,000 ft.
+    if (s.y >= MOON_ALTITUDE_M && !s.passedMoon) {
+      s.passedMoon = true;
+      flashMsg(s.moonEndsFlight ? 'MOON REACHED!' : 'MOON — PRESSING ON');
       Sfx.play('win');
+      if (s.moonEndsFlight) s.moonReached = true;
     }
 
     // out of fuel + falling far below max → end
@@ -1442,8 +1450,13 @@
     if (altFt < 15000) return 0.4;
     if (altFt < 30000) return 0.5;      // lightning band
     if (altFt < 100000) return 0.25;
-    if (altFt < 800000) return 0.6;     // debris
-    return 0.25;
+    // The old 0.6/s here was the highest rate in the game, and it sits in the
+    // band a moonshot must cross for minutes. That was survivable only while
+    // hazards could never actually connect; once they did, sustained
+    // high-altitude flight became impossible and capped real apogees near
+    // 200k ft — five times short of the moon. Brought in line with the band below.
+    if (altFt < 800000) return 0.22;    // debris
+    return 0.18;
   }
 
   function pickHazardType(altFt, mod) {
@@ -1475,8 +1488,10 @@
       if (r < lProb + dProb) return 'debris';
       return null;
     }
-    // high altitude: mostly debris
-    return Math.random() < (0.7 * debrisMul) ? 'debris' : null;
+    // High altitude: debris only. At 30 damage a strike this is the most lethal
+    // hazard in the game, so it stays sparse — the weather multiplier (METEOR
+    // SHOWER 3x) is what makes a debris field genuinely dangerous.
+    return Math.random() < (0.3 * debrisMul) ? 'debris' : null;
   }
 
   function makeHazard(type, s) {
