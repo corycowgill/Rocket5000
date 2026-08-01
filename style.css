@@ -873,8 +873,6 @@ canvas {
   pointer-events: auto;
 }
 .touch-stage {
-  align-self: flex-end;
-  width: 150px;
   padding: 10px;
   font-size: 13px;
   letter-spacing: 0.18em;
@@ -922,12 +920,27 @@ canvas {
   margin-bottom: 4px;
 }
 
+/* Mission controls (STAGE / TIME / RECOVER) share a wrapping group so the row
+   cannot overflow a phone once more buttons are added to it. */
+.mission-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-end;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mission-bar > .touch-btn {
+  flex: 1 1 96px;
+  min-width: 88px;
+  max-width: 150px;
+  width: auto;
+  margin-top: 0;
+}
+
 /* TIME warp — extra physics steps so long coasts don't cost real minutes */
 .touch-warp {
-  align-self: flex-end;
-  width: 150px;
   padding: 8px 10px;
-  margin-top: 6px;
   font-size: 12px;
   letter-spacing: 0.14em;
   color: var(--paper);
@@ -941,10 +954,7 @@ canvas {
 
 /* RECOVER — ends the flight once the tanks are dry */
 .touch-recover {
-  align-self: flex-end;
-  width: 150px;
   padding: 8px 10px;
-  margin-top: 6px;
   font-size: 12px;
   letter-spacing: 0.16em;
   color: var(--paper);
@@ -1803,5 +1813,17 @@ canvas {
   .logo-line-2 { font-size: 12px; }
   .panel-label { font-size: 9px; padding: 2px 8px; }
   .result-stamp { font-size: 18px; top: 40px; right: 8px; }
+  /* flight controls: keep the mission group and abilities on separate lines */
+  .hud-row { flex-direction: column; align-items: stretch; gap: 6px; }
+  .mission-bar > .touch-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: none;
+    padding: 9px 4px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+  }
+  .ability-bar { justify-content: space-between; }
+  .ability-bar .ability-btn { flex: 1 1 0; min-width: 0; }
   .form-row.apogee .dsky-readout { font-size: 28px; padding: 8px; }
 }

@@ -159,16 +159,32 @@ test('RECOVER is refused while fuel remains and allowed once dry', () => {
 test('hazards are not culled instantly at flight speed', () => {
   // Hazards used to carry a world-frame vy against a 30m cull window, so a
   // climbing rocket left every one behind in ~0.2s and nothing could ever hit.
+  // The hazard is constructed directly rather than waiting for a random spawn,
+  // which produced no hazard at all in roughly one run in six.
   const h = createFlight();
   const s = h.launch(twoStage());
   h.thrust(true);
-  h.run(400);
-  s.y = 4000; s.vy = 200;
-  let maxLife = 0;
-  h.run(400, () => {
-    h.F.hazards.forEach((z) => { if (z.t > maxLife) maxLife = z.t; });
-  });
-  assert.ok(maxLife > 1.0, 'a hazard should survive longer than a fraction of a second, got ' + maxLife.toFixed(2));
+  h.run(200);
+  s.y = 4000; s.vy = 200;               // climbing fast, which used to cull everything
+
+  const bird = h.Flight._makeHazard('bird', s);
+  h.F.hazards.length = 0;
+  h.F.hazards.push(bird);
+
+  // Survival time alone is too weak an assertion — the speed-scaled cull window
+  // satisfies it on its own. What actually matters is that the hazard can still
+  // CLOSE on a fast-climbing rocket, which is what the rocket-frame vy provides.
+  const startDist = Math.hypot(bird.x - s.x, bird.y - s.y);
+  let minDist = startDist;
+  for (let i = 0; i < 300; i++) {
+    s.vy = 200;                          // keep climbing for the whole window
+    if (!h.step()) break;
+    if (!h.F.hazards.includes(bird)) break;
+    minDist = Math.min(minDist, Math.hypot(bird.x - s.x, bird.y - s.y));
+  }
+  assert.ok(minDist < startDist * 0.5,
+    'a hazard must be able to close on a climbing rocket: started ' +
+    startDist.toFixed(1) + 'm, got no nearer than ' + minDist.toFixed(1) + 'm');
   h.exit();
 });
 
@@ -208,10 +224,14 @@ test('pickups above the rocket are culled during descent', () => {
   h.F.pickups.length = 0;
   // must match the real pickup shape — a missing vx/vy makes x go NaN and the
   // pickup gets culled by the x test instead, which would hide the bug
-  h.F.pickups.push({ type: 'scrap', x: s.x, y: s.y + 4000, vx: 0, vy: 0, t: 0, collected: false });
+  const stranded = { type: 'scrap', x: s.x, y: s.y + 4000, vx: 0, vy: 0, t: 0, collected: false };
+  h.F.pickups.push(stranded);
   s.vy = 0;
   h.run(5);
-  assert.equal(h.F.pickups.length, 0, 'a pickup far above the rocket must be culled');
+  // Assert THIS pickup is gone rather than that the array is empty: the spawner
+  // can add a fresh pickup during these frames, which made an emptiness check
+  // intermittently fail for a reason unrelated to the bug under test.
+  assert.ok(!h.F.pickups.includes(stranded), 'a pickup far above the rocket must be culled');
   h.exit();
 });
 
@@ -220,23 +240,34 @@ test('pickups above the rocket are culled during descent', () => {
 test('warp advances the sim faster without changing the timestep', () => {
   // A moonshot runs 7-14 minutes of real time. Warp runs extra physics steps at
   // the SAME dt, so the simulation is identical — only wall-clock is saved.
-  const climb = (h) => { h.thrust(true); h.run(2200); };   // clear the low-alt guard
+  //
+  // The guard conditions are re-cleared every frame and frames are counted
+  // rather than assumed: a random engine sputter or an early crash would
+  // otherwise suspend warp mid-measurement and fail this for reasons that have
+  // nothing to do with warp.
+  const measure = (warp) => {
+    const h = createFlight();
+    const s = h.launch(twoStage());
+    h.thrust(true);
+    h.run(200);                          // clear the time < 3s guard
+    s.warp = warp;
+    const start = s.time;
+    let frames = 0;
+    for (let i = 0; i < 100; i++) {
+      s.y = 20000 / 3.281;               // above the low-altitude guard
+      s.angle = 0; s.angVel = 0;         // not tumbling
+      s.hull = s.maxHull;                // cannot die mid-measurement
+      s.engines.forEach((e) => { e.sputterT = 0; });
+      if (!h.step()) break;
+      frames++;
+    }
+    const per = frames > 0 ? (s.time - start) / frames : 0;
+    h.exit();
+    return per;
+  };
 
-  const a = createFlight();
-  a.launch(twoStage()); climb(a);
-  const aStart = a.sim.time;
-  for (let i = 0; i < 100; i++) if (!a.step()) break;
-  const perFrame1 = (a.sim.time - aStart) / 100;
-  a.exit();
-
-  const b = createFlight();
-  b.launch(twoStage()); climb(b);
-  b.sim.warp = 8;
-  const bStart = b.sim.time;
-  for (let i = 0; i < 100; i++) if (!b.step()) break;
-  const perFrame8 = (b.sim.time - bStart) / 100;
-  b.exit();
-
+  const perFrame1 = measure(1);
+  const perFrame8 = measure(8);
   assert.ok(perFrame8 > perFrame1 * 6,
     'x8 warp should advance the sim far faster per frame (' +
     perFrame1.toFixed(4) + ' vs ' + perFrame8.toFixed(4) + ')');
@@ -254,12 +285,19 @@ test('warp is suspended whenever the player needs to react', () => {
     const h = createFlight();
     const s = h.launch(twoStage());
     h.thrust(true);
-    h.run(2200);
+    h.run(200);
     s.warp = 8;
-    breakIt(s);
     const start = s.time;
-    for (let i = 0; i < 40; i++) if (!h.step()) break;
-    const perFrame = (s.time - start) / 40;
+    let frames = 0;
+    for (let i = 0; i < 40; i++) {
+      // baseline is warp-eligible; breakIt() then introduces exactly one blocker
+      s.y = 20000 / 3.281; s.angle = 0; s.angVel = 0; s.hull = s.maxHull;
+      s.engines.forEach((e) => { e.sputterT = 0; });
+      breakIt(s);
+      if (!h.step()) break;
+      frames++;
+    }
+    const perFrame = frames > 0 ? (s.time - start) / frames : 0;
     assert.ok(perFrame < 0.03,
       'warp must drop to real time during: ' + label + ' (got ' + perFrame.toFixed(4) + ' s/frame)');
     h.exit();
