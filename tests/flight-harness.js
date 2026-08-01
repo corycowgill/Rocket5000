@@ -91,14 +91,17 @@ function createFlight(opts) {
   g.Builder = { getCurrentRocket: () => ({ parts: ['hairdryer', 'soda_bottle', 'trash_can'], finId: null }) };
 
   let src = fs.readFileSync(path.join(ROOT, 'js', 'flight.js'), 'utf8');
-  const MARK = 'global.Flight = { enter, exit };';
+  // Append test-only internals to the module's export object. Anchored on the
+  // last real entry rather than the whole literal so adding a public export does
+  // not break the harness; if this anchor ever goes, it fails loudly here.
+  const MARK = 'rollWeather: pickModifier,';
   if (!src.includes(MARK)) {
-    throw new Error('flight.js export marker changed — update tests/flight-harness.js');
+    throw new Error('flight.js export shape changed — update tests/flight-harness.js');
   }
-  src = src.replace(MARK,
-    'global.Flight = { enter, exit, _F: F, _jettison: jettisonStage, _useAbility: useAbility, ' +
-    '_endFlight: endFlight, _canRecover: canRecover, _canStage: canStage, ' +
-    '_makeHazard: makeHazard, _updateHazards: updateHazards };');
+  src = src.replace(MARK, MARK +
+    ' _F: F, _jettison: jettisonStage, _useAbility: useAbility,' +
+    ' _endFlight: endFlight, _canRecover: canRecover, _canStage: canStage,' +
+    ' _makeHazard: makeHazard, _updateHazards: updateHazards,');
   vm.runInContext(src, ctx, { filename: 'flight.js' });
 
   const CALM = { id: 'calm', windMul: 1, debrisMul: 1, lightningMul: 1, tailwind: 0, scrapMul: 1 };
@@ -113,7 +116,9 @@ function createFlight(opts) {
       g.Game.lastRocket = rocket;
       g.Game.currentScreen = 'flight';
       g.Flight.enter(g.Game);
-      g.Flight._F.sim.modifier = modifier || CALM;
+      // `undefined` -> default to CALM for determinism; `null` -> keep whatever
+      // enter() chose, so the pre-rolled forecast path can be tested
+      if (modifier !== null) g.Flight._F.sim.modifier = modifier || CALM;
       return g.Flight._F.sim;
     },
     step(dt) {

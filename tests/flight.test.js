@@ -265,3 +265,27 @@ test('warp is suspended whenever the player needs to react', () => {
     h.exit();
   }
 });
+
+// ---- weather forecast ------------------------------------------------------
+
+test('the pre-rolled forecast is the weather actually flown', () => {
+  // A moonshot is a 10+ minute commitment and METEOR SHOWER triples debris in
+  // the band it must cross. Rolling the weather only at launch made that an
+  // unseeable dice roll, so the hangar now forecasts it — which is only
+  // meaningful if the forecast is what you actually get.
+  const h = createFlight();
+  const forecast = h.Flight.MODIFIERS.find((m) => m.id === 'meteor');
+  h.g.Game.nextWeather = forecast;
+  const s = h.launch({ parts: [E, F, B], finId: null }, null);
+  assert.equal(s.modifier.id, forecast.id, 'the flight must use the forecast weather');
+  h.exit();
+});
+
+test('with no forecast a valid weather is still rolled', () => {
+  const h = createFlight();
+  h.g.Game.nextWeather = null;
+  const s = h.launch({ parts: [E, F, B], finId: null }, null);
+  assert.ok(s.modifier && s.modifier.id, 'a flight must always have weather');
+  assert.ok(h.Flight.MODIFIERS.some((m) => m.id === s.modifier.id), 'and it must be a real modifier');
+  h.exit();
+});

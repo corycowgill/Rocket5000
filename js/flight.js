@@ -85,7 +85,7 @@
     F.seed = Date.now() & 0xFFFFFFFF;
     F.rng = rngFromSeed(F.seed);
 
-    initSim(r);
+    initSim(r, { modifier: (Game && Game.nextWeather) || null });
     initStars();
     F.particles = [];
     F.hazards = [];
@@ -3631,5 +3631,11 @@
     setAbility('#ability-shield', cons.shield, (s.shieldT || 0) > 0);
   }
 
-  global.Flight = { enter, exit };
+  // The hangar forecasts the next launch's weather so a 10-minute moonshot is
+  // never committed to blind. Flight.enter consumes Game.nextWeather if set.
+  global.Flight = {
+    enter, exit,
+    MODIFIERS,
+    rollWeather: pickModifier,
+  };
 })(window);

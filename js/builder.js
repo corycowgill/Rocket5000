@@ -672,6 +672,20 @@
       return status;
     };
 
+    // Launch weather. Rolled on entering the hangar so a long mission is never
+    // committed to blind — a moonshot runs 10+ minutes and METEOR SHOWER makes
+    // the high-altitude crossing far more dangerous.
+    if (typeof Game !== 'undefined' && Game.nextWeather) {
+      const wx = Game.nextWeather;
+      const mulPct = Math.round((wx.scrapMul - 1) * 100);
+      const mul = mulPct === 0 ? '' : ' · scrap ' + (mulPct > 0 ? '+' : '') + mulPct + '%';
+      const risky = wx.debrisMul > 1 || wx.lightningMul > 1 || wx.windMul > 1.5;
+      issues.push({
+        kind: risky ? 'warn' : 'info',
+        text: (risky ? '⛈ ' : '☀ ') + 'Forecast: ' + wx.label + mul,
+      });
+    }
+
     // Supply loadout: you could otherwise only discover you launched with no
     // charges once you were already in flight and needed one.
     if (typeof Game !== 'undefined' && Game.getConsumables) {

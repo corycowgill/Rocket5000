@@ -25,7 +25,15 @@
       Game.activeChallenge = null;
       refreshTitle();
     }
-    if (screen === 'hangar') Builder.enter(Game);
+    // Roll the next launch's weather when the player reaches the hangar so the
+    // readiness panel can show it. A moonshot is a 10+ minute commitment; being
+    // handed METEOR SHOWER only after launching made that a blind dice roll.
+    if (screen === 'hangar') {
+      if (!Game.nextWeather && typeof Flight !== 'undefined' && Flight.rollWeather) {
+        Game.nextWeather = Flight.rollWeather();
+      }
+      Builder.enter(Game);
+    }
     if (screen === 'flight') Flight.enter(Game);
     if (screen === 'challenges') renderChallenges();
     if (screen === 'workshop') renderWorkshop();
@@ -488,6 +496,7 @@
 
   function applyResult(result) {
     // result: { altitude, fuelUsed, partsLost, success, time }
+    Game.nextWeather = null;     // fresh forecast for the next launch
     if (Game.sandbox) {
       Game.lastResult = result;
       renderResult(result, { scrapEarned: 0, dataEarned: 0, unlocks: [] });
