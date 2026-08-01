@@ -922,6 +922,23 @@ canvas {
   margin-bottom: 4px;
 }
 
+/* TIME warp — extra physics steps so long coasts don't cost real minutes */
+.touch-warp {
+  align-self: flex-end;
+  width: 150px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--paper);
+  border: 2px solid var(--ink);
+  background: var(--console-mid);
+  box-shadow: inset 0 0 0 2px var(--console-rim), 3px 3px 0 var(--shadow);
+}
+.touch-warp.active { background: var(--dsky-green); color: var(--ink); }
+.touch-warp.held   { background: var(--caution-dark); color: var(--ink); }
+.touch-warp:active { background: var(--console-pale); }
+
 /* RECOVER — ends the flight once the tanks are dry */
 .touch-recover {
   align-self: flex-end;

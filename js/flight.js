@@ -207,6 +207,7 @@
       moonEndsFlight: !(typeof Game !== 'undefined' && Game.state && Game.state.stats &&
                         (Game.state.stats.totalMoonshots || 0) > 0),
       passedMoon: false,
+      warp: 1,                  // time acceleration (T cycles it)
       throttle: 0,
       modifier,
       // milestones
@@ -392,6 +393,7 @@
       if (!e.repeat && (e.code === 'Digit1' || e.code === 'Numpad1')) { useAbility('boost');  e.preventDefault(); }
       if (!e.repeat && (e.code === 'Digit2' || e.code === 'Numpad2')) { useAbility('repair'); e.preventDefault(); }
       if (!e.repeat && (e.code === 'Digit3' || e.code === 'Numpad3')) { useAbility('shield'); e.preventDefault(); }
+      if (!e.repeat && e.code === 'KeyT') { cycleWarp(); e.preventDefault(); }
       if (!e.repeat && (e.code === 'Escape' || e.code === 'Enter')) {
         if (!endFlight() && !F.sim.crashed) flashMsg('BURN OUT YOUR FUEL FIRST');
         e.preventDefault();
@@ -422,6 +424,13 @@
     const stageHandler = (e) => { jettisonStage(); e.preventDefault(); };
     stageBtn.addEventListener('click', stageHandler);
     stageBtn.addEventListener('touchstart', stageHandler, { passive: false });
+
+    const warpBtn = $('#touch-warp');
+    if (warpBtn) {
+      const warpHandler = (e) => { cycleWarp(); e.preventDefault(); };
+      warpBtn.addEventListener('click', warpHandler);
+      warpBtn.addEventListener('touchstart', warpHandler, { passive: false });
+    }
 
     const recBtn = $('#touch-recover');
     if (recBtn) {
@@ -631,6 +640,37 @@
   // locked in, and the fall can take minutes with no throttle input possible.
   // Let the player collect their results instead of watching it. Descending
   // still earns combo and pickups, so this is opt-in rather than automatic.
+  const WARP_STEPS = [1, 2, 4, 8];
+
+  function cycleWarp() {
+    const s = F.sim;
+    if (!s || s.exiting) return;
+    const i = WARP_STEPS.indexOf(s.warp || 1);
+    s.warp = WARP_STEPS[(i + 1) % WARP_STEPS.length];
+    flashMsg(s.warp === 1 ? 'REAL TIME' : 'TIME x' + s.warp);
+  }
+
+  // Warp is suppressed whenever the player has something to react to, so it can
+  // never skip a decision: a sputtering engine (the throttle-cut window is only
+  // ~1.6s), a tumble, or the moments around liftoff and the ground.
+  function warpBlocked() {
+    const s = F.sim;
+    if (!s) return true;
+    if (s.crashed || s.moonReached || s.exiting) return true;
+    if (s.time < 3) return true;
+    if (s.y * M_TO_FT < 1500) return true;                  // near the ground
+    if (s.engines.some(e => e.alive && e.sputterT > 0)) return true;
+    const w = Math.atan2(Math.sin(s.angle), Math.cos(s.angle));
+    if (Math.abs(w) > 1.2) return true;                     // attitude needs attention
+    return false;
+  }
+
+  function effectiveWarp() {
+    const s = F.sim;
+    if (!s) return 1;
+    return warpBlocked() ? 1 : (s.warp || 1);
+  }
+
   function canRecover() {
     const s = F.sim;
     return !!s && !s.crashed && !s.moonReached && !s.exiting && s.fuel <= 0 && s.time > 2;
@@ -662,7 +702,15 @@
     F.lastT = t;
     if (dt > 0.05) dt = 0.05;
 
-    update(dt, Game);
+    // Time acceleration. A moonshot runs 7-14 minutes of real time and a
+    // deep-space attempt over 20, most of it coasting with no input to give.
+    // Extra physics steps at the SAME dt keep the simulation identical — this
+    // only spends less wall-clock on it, it does not change the flight.
+    const warp = effectiveWarp();
+    for (let i = 0; i < warp; i++) {
+      update(dt, Game);
+      if (F.sim.crashed || F.sim.moonReached) break;   // don't overshoot the end
+    }
     render(dt);
     updateHud();
 
@@ -3549,6 +3597,15 @@
       const stages = currentStages(s);
       const droppable = stages.length - 1;
       stageBtn.textContent = 'STAGE' + (droppable > 1 ? ' (' + droppable + ')' : '');
+    }
+
+    const warpBtn2 = $('#touch-warp');
+    if (warpBtn2) {
+      const set = s.warp || 1;
+      const eff = effectiveWarp();
+      warpBtn2.textContent = set === 1 ? 'TIME x1' : ('TIME x' + set + (eff === 1 ? ' (HELD)' : ''));
+      warpBtn2.classList.toggle('active', set > 1 && eff > 1);
+      warpBtn2.classList.toggle('held', set > 1 && eff === 1);
     }
 
     // recover button — only live once the tanks are dry

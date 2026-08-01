@@ -214,3 +214,54 @@ test('pickups above the rocket are culled during descent', () => {
   assert.equal(h.F.pickups.length, 0, 'a pickup far above the rocket must be culled');
   h.exit();
 });
+
+// ---- time acceleration -----------------------------------------------------
+
+test('warp advances the sim faster without changing the timestep', () => {
+  // A moonshot runs 7-14 minutes of real time. Warp runs extra physics steps at
+  // the SAME dt, so the simulation is identical — only wall-clock is saved.
+  const climb = (h) => { h.thrust(true); h.run(2200); };   // clear the low-alt guard
+
+  const a = createFlight();
+  a.launch(twoStage()); climb(a);
+  const aStart = a.sim.time;
+  for (let i = 0; i < 100; i++) if (!a.step()) break;
+  const perFrame1 = (a.sim.time - aStart) / 100;
+  a.exit();
+
+  const b = createFlight();
+  b.launch(twoStage()); climb(b);
+  b.sim.warp = 8;
+  const bStart = b.sim.time;
+  for (let i = 0; i < 100; i++) if (!b.step()) break;
+  const perFrame8 = (b.sim.time - bStart) / 100;
+  b.exit();
+
+  assert.ok(perFrame8 > perFrame1 * 6,
+    'x8 warp should advance the sim far faster per frame (' +
+    perFrame1.toFixed(4) + ' vs ' + perFrame8.toFixed(4) + ')');
+});
+
+test('warp is suspended whenever the player needs to react', () => {
+  // Warping past a sputtering engine would silently eat the ~1.6s window in
+  // which cutting the throttle saves it, turning a skill moment into a dice roll.
+  const cases = [
+    ['engine sputtering', (s) => { s.engines[0].sputterT = 1.6; }],
+    ['tumbling',          (s) => { s.angle = Math.PI; s.angVel = 0; }],
+    ['near the ground',   (s) => { s.y = 300 / 3.281; }],
+  ];
+  for (const [label, breakIt] of cases) {
+    const h = createFlight();
+    const s = h.launch(twoStage());
+    h.thrust(true);
+    h.run(2200);
+    s.warp = 8;
+    breakIt(s);
+    const start = s.time;
+    for (let i = 0; i < 40; i++) if (!h.step()) break;
+    const perFrame = (s.time - start) / 40;
+    assert.ok(perFrame < 0.03,
+      'warp must drop to real time during: ' + label + ' (got ' + perFrame.toFixed(4) + ' s/frame)');
+    h.exit();
+  }
+});
