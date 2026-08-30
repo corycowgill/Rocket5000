@@ -355,29 +355,46 @@
     Game.toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2400);
   }
 
+  function challengeKey(ch, date) {
+    return ch.id + ':' + (date || new Date()).toDateString();
+  }
+
   function renderChallenges() {
     const today = new Date();
     const seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
     const challenges = generateDailyChallenges(seed);
+
+    // A challenge pays once per day. Entries from previous days can never match
+    // again, so drop them — otherwise this list grows in the save file forever.
+    const stamp = today.toDateString();
+    Game.state.completedChallenges = (Game.state.completedChallenges || [])
+      .filter(k => k.endsWith(':' + stamp));
+
     const root = $('#challenge-body');
     root.innerHTML = '';
     challenges.forEach(ch => {
+      const done = Game.state.completedChallenges.indexOf(challengeKey(ch, today)) !== -1;
       const card = document.createElement('div');
-      card.className = 'challenge-card';
+      card.className = 'challenge-card' + (done ? ' done' : '');
       card.innerHTML = `
-        <h4>${ch.title}</h4>
+        <h4>${ch.title}${done ? ' <span class="challenge-done">✓ COMPLETE</span>' : ''}</h4>
         <p>${ch.description}</p>
         <div style="font-size:10px;letter-spacing:0.18em;color:var(--ink-soft);font-weight:900;border-top:1px dashed var(--paper-line);padding-top:8px;margin-top:8px">REWARD: ${ch.reward} SCRAP · ${ch.dataReward} DATA</div>
       `;
       const btn = document.createElement('button');
-      btn.className = 'btn btn-small btn-primary';
+      btn.className = 'btn btn-small ' + (done ? '' : 'btn-primary');
       btn.style.marginTop = '10px';
-      btn.textContent = 'ATTEMPT';
-      btn.addEventListener('click', () => {
-        Game.activeChallenge = ch;
-        showToast('CHALLENGE: ' + ch.title);
-        go('hangar');
-      });
+      // Claiming twice in a day pays nothing, and these can be long flights —
+      // say so rather than letting the player spend one finding out.
+      btn.textContent = done ? 'CLAIMED TODAY' : 'ATTEMPT';
+      btn.disabled = done;
+      if (!done) {
+        btn.addEventListener('click', () => {
+          Game.activeChallenge = ch;
+          showToast('CHALLENGE: ' + ch.title);
+          go('hangar');
+        });
+      }
       card.appendChild(btn);
       root.appendChild(card);
     });
@@ -552,12 +569,15 @@
     if (Game.activeChallenge) {
       const ch = Game.activeChallenge;
       const restrictOk = challengeRestrictionCheck(Game.lastRocket, ch.restrict).ok;
+      // same key builder the roster uses, so "CLAIMED TODAY" and the payout
+      // can never disagree about what counts as already done
+      const key = challengeKey(ch);
       const challengeMet = restrictOk && challengeGoalMet(ch, result) &&
-        (state.completedChallenges.indexOf(ch.id + ':' + new Date().toDateString()) === -1);
+        (state.completedChallenges.indexOf(key) === -1);
       if (challengeMet) {
         scrapEarned += ch.reward;
         dataEarned += ch.dataReward;
-        state.completedChallenges.push(ch.id + ':' + new Date().toDateString());
+        state.completedChallenges.push(key);
       }
       Game.activeChallenge = null;
     }

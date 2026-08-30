@@ -240,3 +240,58 @@ test('analysis: a rocket that never lifted is pointed at TWR', () => {
   const a = analysisFor(null, { crashReason: 'NEVER LEFT THE PAD' });
   assert.match(a, /TWR/);
 });
+
+// ---- daily challenge claim state -------------------------------------------
+// A challenge pays once per day, but the roster showed no sign of which were
+// already claimed — so a player could spend a long flight on one that could not
+// pay. These pin the claim bookkeeping the roster reads.
+
+test('a challenge pays once per day, not twice', () => {
+  const g = boot();
+  muteAchievements(g);
+  const ch = { id: 'apex', title: 'APEX', reward: 200, dataReward: 10,
+               restrict: null, goal: { type: 'altitude', ft: 5000 } };
+  const rocket = { parts: ['hairdryer', 'soda_bottle', 'trash_can'], finId: null };
+
+  g.Game.activeChallenge = ch;
+  g.Game.lastRocket = rocket;
+  const before = g.Game.state.scrap;
+  g.Game.applyResult(baseResult({ altitude: 10000 }));
+  const firstGain = g.Game.state.scrap - before;
+
+  g.Game.activeChallenge = ch;
+  g.Game.lastRocket = rocket;
+  const mid = g.Game.state.scrap;
+  g.Game.applyResult(baseResult({ altitude: 10000 }));
+  const secondGain = g.Game.state.scrap - mid;
+
+  assert.equal(firstGain - secondGain, ch.reward,
+    'the second claim of the day must not pay the challenge reward again');
+});
+
+test('completing a challenge records a key the roster can match', () => {
+  const g = boot();
+  const ch = { id: 'apex', title: 'APEX', reward: 200, dataReward: 10,
+               restrict: null, goal: { type: 'altitude', ft: 5000 } };
+  g.Game.activeChallenge = ch;
+  g.Game.lastRocket = { parts: ['hairdryer', 'soda_bottle', 'trash_can'], finId: null };
+  g.Game.applyResult(baseResult({ altitude: 10000 }));
+
+  const expected = 'apex:' + new Date().toDateString();
+  assert.ok(g.Game.state.completedChallenges.includes(expected),
+    'payout and roster must agree on the claim key, got ' +
+    JSON.stringify(g.Game.state.completedChallenges));
+});
+
+test('the roster prunes claim keys from previous days', () => {
+  const g = boot();
+  g.Game.state.completedChallenges = [
+    'apex:Mon Jan 01 2024',            // stale, can never match again
+    'no-fins:' + new Date().toDateString(),
+  ];
+  g.Game.go('challenges');
+  assert.ok(!g.Game.state.completedChallenges.some(k => k.includes('2024')),
+    'stale keys should be dropped so the save does not grow forever');
+  assert.ok(g.Game.state.completedChallenges.some(k => k.startsWith('no-fins:')),
+    "today's keys must be kept");
+});

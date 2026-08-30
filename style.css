@@ -1687,6 +1687,23 @@ canvas {
   color: var(--ink);
   box-shadow: 4px 4px 0 var(--shadow);
 }
+/* Already claimed today — a second run pays nothing, so it reads as spent */
+.challenge-card.done {
+  opacity: 0.62;
+  border-style: dashed;
+}
+.challenge-done {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: var(--paper);
+  background: #2f7d4f;
+  border: 2px solid var(--ink);
+  vertical-align: middle;
+}
 .challenge-card::before {
   content: 'ORDER';
   position: absolute;
